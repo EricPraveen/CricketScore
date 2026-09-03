@@ -86,6 +86,11 @@ export default function ScoringScreen() {
   const [selectBowlerModal,  setSelectBowlerModal]  = useState(false);
   const [needNewBowler,      setNeedNewBowler]      = useState(false);
 
+  // ── Run Out Modal States ──────────────────────────────────────────────────
+  const [runOutModal,            setRunOutModal]            = useState(false);
+  const [runsBeforeRunOutModal,  setRunsBeforeRunOutModal]  = useState(false);
+  const [pendingWicketRuns,      setPendingWicketRuns]      = useState(0);
+
   // ── Init ─────────────────────────────────────────────────────────────────
   useEffect(() => {
     const batting = getPlayersByTeam(Number(matchId), battingTeam);
@@ -307,54 +312,102 @@ export default function ScoringScreen() {
       return;
     }
 
+    // If Run Out, transition to run selection and dismissed player flow
+    if (type === 'Run Out') {
+      setWicketModal(false);
+      setPendingWicketRuns(0);
+      setRunsBeforeRunOutModal(true);
+      return;
+    }
+
+    // All other wicket types (Bowled, Caught, LBW, Stumped, Hit Wicket): Striker is dismissed
+    setWicketModal(false);
+    processWicket(striker!, type, 0);
+  };
+
+  const processWicket = (
+    dismissed: Player,
+    type: string,
+    runsScored: number = 0,
+    extrasType: string | null = null,
+    extrasValue: number = 0,
+    isLegalDelivery: boolean = true
+  ) => {
     const currentOverNo = Math.floor(legalBalls / 6);
     const currentBallNo = legalBalls % 6;
 
+    // 1. Record delivery to DB
     addDelivery(
       Number(inningsId),
-      currentOverNo, currentBallNo,
-      striker!.id, nonStriker!.id, currentBowler!.id,
-      0,      // batsman_runs = 0 on wicket
-      null, 0, // no extras
-      true,   // wicket IS a legal delivery
-      true, type, striker!.id, // wicket info
+      currentOverNo,
+      currentBallNo,
+      striker!.id,
+      nonStriker!.id,
+      currentBowler!.id,
+      runsScored,      // batsman runs completed prior to run out
+      extrasType,
+      extrasValue,
+      isLegalDelivery,
+      true,            // is_wicket
+      type,
+      dismissed.id,
       isFreeHit
     );
 
-    const outId = striker!.id;
-    setDismissedIds(prev => [...prev, outId]);
-    setWicketModal(false);
-    setIsFreeHit(false); // wicket is a legal delivery → free hit ends
+    // 2. Track dismissed player so they do not reappear in batsman list
+    setDismissedIds(prev => [...prev, dismissed.id]);
+
+    // 3. Legal delivery ends the Free Hit
+    if (isLegalDelivery) {
+      setIsFreeHit(false);
+    }
 
     refreshScore();
+
+    // 4. In 2nd innings, check if completed runs won the match
+    if (checkTargetChased()) return;
 
     const newWickets = getWickets(Number(inningsId));
     const newBalls   = getLegalBalls(Number(inningsId));
     const totalOvers = match?.overs ?? 0;
 
-    // All out?
+    // 5. All out check (wickets = total team players - 1)
     if (newWickets >= battingPlayers.length - 1) {
       handleInningsEnd();
       return;
     }
 
-    // Did the over complete on this wicket ball?
-    const overComplete = newBalls > 0 && newBalls % 6 === 0 && newBalls / 6 < totalOvers;
+    // 6. Check if overs completed on this ball
+    const isOverComplete = isLegalDelivery && newBalls > 0 && newBalls % 6 === 0;
 
-    if (overComplete) {
-      // Rotation: non-striker faces first ball of new over
-      // New batsman comes in at striker end, but after end-of-over rotation
-      // they become non-striker (non-striker takes strike in new over)
-      const facingNext = nonStriker; // will be striker after rotation
-      setStriker(facingNext);
-      setNonStriker(null); // ← new batsman fills this slot
+    if (isOverComplete) {
+      if (newBalls / 6 >= totalOvers) {
+        handleInningsEnd();
+        return;
+      }
+
+      // Over completed on wicket ball:
+      // Surviving batsman changes ends for new over.
+      // The dismissed player's end is cleared so new batsman takes it.
+      if (dismissed.id === striker?.id) {
+        setStriker(nonStriker); // non-striker faces new over
+        setNonStriker(null);    // incoming batsman fills non-striker slot
+      } else {
+        setNonStriker(striker); // striker moves to non-striker
+        setStriker(null);       // incoming batsman takes strike
+      }
       setNeedNewBowler(true);
-      Alert.alert('Over Complete!', `Over ${newBalls / 6} complete!`);
-      // Show batsman modal (selects non-striker for new over)
+      Alert.alert('Over Complete!', `Over ${newBalls / 6} complete! Select new bowler.`);
       setSelectBatsmanModal(true);
     } else {
-      // Mid-over wicket: new batsman is striker
-      setStriker(null);
+      // Mid-over dismissal:
+      // If Striker is out → new batsman becomes Striker; Non-Striker stays
+      // If Non-Striker is out → new batsman becomes Non-Striker; Striker stays
+      if (dismissed.id === striker?.id) {
+        setStriker(null);
+      } else {
+        setNonStriker(null);
+      }
       setSelectBatsmanModal(true);
     }
   };
@@ -448,12 +501,21 @@ export default function ScoringScreen() {
   );
 
   // Batsman modal title/step labels
-  const batsmanModalTitle = !striker
+  const isInitialOpeners = !striker && !nonStriker && dismissedIds.length === 0;
+  const batsmanModalTitle = isInitialOpeners
     ? 'Select Striker'
+    : !striker
+    ? 'New Batsman In (Striker)'
     : !nonStriker
-    ? 'Select Non-Striker'
-    : 'Select New Batsman';
-  const batsmanModalStep = !striker ? 'Step 1 of 2' : !nonStriker ? 'Step 2 of 2' : '';
+    ? (dismissedIds.length === 0 ? 'Select Non-Striker' : 'New Batsman In (Non-Striker)')
+    : 'New Batsman In';
+  const batsmanModalStep = isInitialOpeners
+    ? 'Step 1 of 2'
+    : (!striker && !nonStriker)
+    ? 'Step 1 of 2'
+    : (dismissedIds.length === 0 && !nonStriker)
+    ? 'Step 2 of 2'
+    : '';
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
@@ -682,6 +744,112 @@ export default function ScoringScreen() {
         </View>
       </Modal>
 
+      {/* ─────── RUNS BEFORE RUN OUT MODAL ─────── */}
+      <Modal visible={runsBeforeRunOutModal} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalBox}>
+            <Text style={styles.modalTitle}>Runs before Run Out?</Text>
+            <Text style={styles.modalSubtitle}>Select completed runs before the run out occurred</Text>
+
+            <View style={styles.runsBeforeRow}>
+              {([0, 1, 2, 3] as const).map(run => (
+                <TouchableOpacity
+                  key={run}
+                  style={[
+                    styles.runBeforeCircle,
+                    pendingWicketRuns === run && styles.runBeforeCircleActive,
+                  ]}
+                  onPress={() => setPendingWicketRuns(run)}
+                  activeOpacity={0.75}
+                >
+                  <Text
+                    style={[
+                      styles.runBeforeCircleText,
+                      pendingWicketRuns === run && styles.runBeforeCircleTextActive,
+                    ]}
+                  >
+                    {run}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <TouchableOpacity
+              style={styles.confirmRunOutBtn}
+              onPress={() => {
+                setRunsBeforeRunOutModal(false);
+                setRunOutModal(true);
+              }}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.confirmRunOutBtnText}>Next: Select Who is Out →</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.modalCancel}
+              onPress={() => setRunsBeforeRunOutModal(false)}
+            >
+              <Text style={styles.modalCancelText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ─────── RUN OUT MODAL (Who is out?) ─────── */}
+      <Modal visible={runOutModal} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalBox}>
+            <Text style={styles.modalTitle}>🏃 Run Out — Who is out?</Text>
+            <Text style={styles.modalSubtitle}>
+              {pendingWicketRuns > 0
+                ? `${pendingWicketRuns} run${pendingWicketRuns > 1 ? 's' : ''} scored before wicket`
+                : 'Select the dismissed batsman'}
+            </Text>
+
+            {striker && (
+              <TouchableOpacity
+                style={styles.runOutCard}
+                onPress={() => {
+                  setRunOutModal(false);
+                  processWicket(striker, 'Run Out', pendingWicketRuns);
+                }}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.runOutPlayerName} numberOfLines={1}>{striker.name}</Text>
+                <View style={styles.strikerBadge}>
+                  <Text style={styles.strikerBadgeText}>STRIKER ✦</Text>
+                </View>
+              </TouchableOpacity>
+            )}
+
+            <View style={styles.runOutDivider} />
+
+            {nonStriker && (
+              <TouchableOpacity
+                style={styles.runOutCard}
+                onPress={() => {
+                  setRunOutModal(false);
+                  processWicket(nonStriker, 'Run Out', pendingWicketRuns);
+                }}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.runOutPlayerName} numberOfLines={1}>{nonStriker.name}</Text>
+                <View style={styles.nonStrikerBadge}>
+                  <Text style={styles.nonStrikerBadgeText}>NON-STRIKER</Text>
+                </View>
+              </TouchableOpacity>
+            )}
+
+            <TouchableOpacity
+              style={styles.modalCancel}
+              onPress={() => setRunOutModal(false)}
+            >
+              <Text style={styles.modalCancelText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
       {/* ─────── SELECT BATSMAN MODAL ─────── */}
       <Modal visible={selectBatsmanModal} transparent animationType="slide">
         <View style={styles.modalOverlay}>
@@ -691,28 +859,28 @@ export default function ScoringScreen() {
               <Text style={styles.modalSubtitle}>{batsmanModalStep}</Text>
             )}
             <ScrollView style={{ maxHeight: 420 }}>
-              {(!striker ? battingPlayers : availableBatsmen).map(player => (
+              {(!striker && !nonStriker && dismissedIds.length === 0 ? battingPlayers : availableBatsmen).map(player => (
                 <TouchableOpacity
                   key={player.id}
                   style={styles.modalOption}
                   onPress={() => {
-                    if (!striker) {
+                    if (!striker && !nonStriker) {
                       // Selecting opener striker
                       setStriker(player);
-                      // Modal stays open for non-striker
-                    } else if (!nonStriker) {
-                      // Selecting opener non-striker OR new batsman after over+wicket
-                      setNonStriker(player);
-                      setSelectBatsmanModal(false);
-                      if (!currentBowler || needNewBowler) {
-                        setNeedNewBowler(false);
-                        setSelectBowlerModal(true);
-                      }
-                    } else {
-                      // Replacement batsman (mid-over wicket) → becomes striker
+                      // Modal stays open for opener non-striker
+                    } else if (!striker) {
+                      // Dismissed striker replaced (or over complete rotation)
                       setStriker(player);
                       setSelectBatsmanModal(false);
                       if (needNewBowler) {
+                        setNeedNewBowler(false);
+                        setSelectBowlerModal(true);
+                      }
+                    } else if (!nonStriker) {
+                      // Dismissed non-striker replaced (or opener non-striker)
+                      setNonStriker(player);
+                      setSelectBatsmanModal(false);
+                      if (!currentBowler || needNewBowler) {
                         setNeedNewBowler(false);
                         setSelectBowlerModal(true);
                       }
@@ -722,7 +890,7 @@ export default function ScoringScreen() {
                   <Text style={styles.modalOptionText}>{player.name}</Text>
                 </TouchableOpacity>
               ))}
-              {(!striker ? battingPlayers : availableBatsmen).length === 0 && (
+              {(!striker && !nonStriker && dismissedIds.length === 0 ? battingPlayers : availableBatsmen).length === 0 && (
                 <Text style={styles.modalEmpty}>No available batsmen</Text>
               )}
             </ScrollView>
@@ -925,4 +1093,97 @@ const styles = StyleSheet.create({
   modalCancel:        { paddingTop: 18, alignItems: 'center' },
   modalCancelText:    { color: C.red, fontSize: 15, fontWeight: '700' },
   modalEmpty:         { color: C.textMuted, fontSize: 14, textAlign: 'center', paddingVertical: 20 },
+
+  // ── Run Out UI Styles ──────────────────────────────────────────────────
+  runOutCard: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#182a1f',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#1e3d28',
+  },
+  runOutPlayerName: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '700',
+    flex: 1,
+    marginRight: 10,
+  },
+  strikerBadge: {
+    backgroundColor: '#1a3a1a',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#2e7d32',
+  },
+  strikerBadgeText: {
+    color: '#4CAF50',
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  nonStrikerBadge: {
+    backgroundColor: '#2a1a0a',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e65100',
+  },
+  nonStrikerBadgeText: {
+    color: '#FF9800',
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  runOutDivider: {
+    height: 10,
+  },
+
+  // ── Runs Before Run Out Styles ─────────────────────────────────────────
+  runsBeforeRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 16,
+    marginVertical: 18,
+  },
+  runBeforeCircle: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#182a1f',
+    borderWidth: 2,
+    borderColor: '#1e3d28',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  runBeforeCircleActive: {
+    borderColor: '#00e676',
+    backgroundColor: '#1b5e20',
+  },
+  runBeforeCircleText: {
+    color: '#ffffff',
+    fontSize: 22,
+    fontWeight: '800',
+  },
+  runBeforeCircleTextActive: {
+    color: '#00e676',
+  },
+  confirmRunOutBtn: {
+    backgroundColor: '#1b5e20',
+    paddingVertical: 15,
+    borderRadius: 12,
+    alignItems: 'center',
+    marginTop: 6,
+  },
+  confirmRunOutBtnText: {
+    color: '#ffffff',
+    fontSize: 15,
+    fontWeight: '800',
+  },
 });

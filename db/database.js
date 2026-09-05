@@ -9,6 +9,7 @@ export const initDB = () => {
       team1 TEXT NOT NULL,
       team2 TEXT NOT NULL,
       overs INTEGER NOT NULL,
+      balls_per_over INTEGER DEFAULT 6,
       innings_count INTEGER DEFAULT 2,
       status TEXT DEFAULT 'live',
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP

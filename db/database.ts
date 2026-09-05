@@ -3,7 +3,7 @@ import * as SQLite from 'expo-sqlite';
 const db = SQLite.openDatabaseSync('cricket.db');
 
 // Increment this whenever the schema changes — old DB will be wiped & recreated
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
 export const initDB = (): void => {
   // ── Schema-version guard ─────────────────────────────────────────────────
@@ -40,6 +40,7 @@ export const initDB = (): void => {
       team1         TEXT    NOT NULL,
       team2         TEXT    NOT NULL,
       overs         INTEGER NOT NULL,
+      balls_per_over INTEGER DEFAULT 6,
       innings_count INTEGER DEFAULT 2,
       status        TEXT    DEFAULT 'live',
       created_at    DATETIME DEFAULT CURRENT_TIMESTAMP

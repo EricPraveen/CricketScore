@@ -28,6 +28,8 @@ export default function SetupScreen() {
   const [team1, setTeam1]         = useState('');
   const [team2, setTeam2]         = useState('');
   const [overs, setOvers]         = useState('');
+  const [matchType, setMatchType] = useState<'ordinary' | 'custom'>('ordinary');
+  const [ballsPerOver, setBallsPerOver] = useState('6');
   const [inningsCount, setInningsCount] = useState<1 | 2>(2);
 
   const [team1Players, setTeam1Players] = useState<string[]>(Array(11).fill(''));
@@ -55,6 +57,15 @@ export default function SetupScreen() {
       Alert.alert('Invalid Overs', 'Enter a positive number of overs.');
       return;
     }
+    const ballsPerOverNum = matchType === 'ordinary' ? 6 : parseInt(ballsPerOver, 10);
+    if (isNaN(ballsPerOverNum) || ballsPerOverNum <= 0) {
+      Alert.alert('Invalid Balls Count', 'Enter a valid number of balls per over (e.g. 4, 5, 6).');
+      return;
+    }
+    if (ballsPerOverNum > 20) {
+      Alert.alert('Too Many Balls', 'Balls per over cannot exceed 20.');
+      return;
+    }
     const filled1 = team1Players.filter(p => p.trim() !== '');
     const filled2 = team2Players.filter(p => p.trim() !== '');
     if (filled1.length < 2 || filled2.length < 2) {
@@ -62,7 +73,7 @@ export default function SetupScreen() {
       return;
     }
 
-    const matchId = createMatch(team1.trim(), team2.trim(), oversNum, inningsCount);
+    const matchId = createMatch(team1.trim(), team2.trim(), oversNum, inningsCount, ballsPerOverNum);
     filled1.forEach(name => addPlayer(name.trim(), team1.trim(), matchId));
     filled2.forEach(name => addPlayer(name.trim(), team2.trim(), matchId));
 
@@ -105,6 +116,64 @@ export default function SetupScreen() {
             onChangeText={setOvers}
             keyboardType="numeric"
           />
+
+          {/* Match Type Selector */}
+          <Text style={styles.fieldLabel}>Match Type</Text>
+          <View style={styles.toggleRow}>
+            <TouchableOpacity
+              style={[styles.toggleBtn, matchType === 'ordinary' && styles.toggleBtnActive]}
+              onPress={() => {
+                setMatchType('ordinary');
+                setBallsPerOver('6');
+              }}
+              activeOpacity={0.8}
+            >
+              <Text style={[styles.toggleText, matchType === 'ordinary' && styles.toggleTextActive]}>
+                🏏 Ordinary (6 Balls)
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.toggleBtn, matchType === 'custom' && styles.toggleBtnActive]}
+              onPress={() => setMatchType('custom')}
+              activeOpacity={0.8}
+            >
+              <Text style={[styles.toggleText, matchType === 'custom' && styles.toggleTextActive]}>
+                ⚙️ Custom Match
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Custom Balls per Over Selector */}
+          {matchType === 'custom' && (
+            <View style={styles.customContainer}>
+              <Text style={styles.fieldLabel}>Balls per Over</Text>
+              <View style={styles.chipRow}>
+                {['4', '5', '6', '8'].map(b => (
+                  <TouchableOpacity
+                    key={b}
+                    style={[styles.chipBtn, ballsPerOver === b && styles.chipBtnActive]}
+                    onPress={() => setBallsPerOver(b)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={[styles.chipText, ballsPerOver === b && styles.chipTextActive]}>
+                      {b} Balls
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <TextInput
+                style={[styles.input, { marginBottom: 4 }]}
+                placeholder="Or type balls per over"
+                placeholderTextColor={C.textMuted}
+                value={ballsPerOver}
+                onChangeText={setBallsPerOver}
+                keyboardType="numeric"
+              />
+              <Text style={styles.inningsBadgeText}>
+                {`⚡ Custom rules: ${parseInt(ballsPerOver, 10) || 6} legal balls per over`}
+              </Text>
+            </View>
+          )}
 
           {/* Innings Count Selector */}
           <Text style={styles.fieldLabel}>Innings</Text>
@@ -216,6 +285,42 @@ const styles = StyleSheet.create({
   toggleText:      { color: C.textSub, fontSize: 14, fontWeight: '600' },
   toggleTextActive:{ color: C.text,    fontSize: 14, fontWeight: '800' },
   inningsBadgeText:{ color: C.textMuted, fontSize: 12, textAlign: 'center', marginTop: 2 },
+
+  customContainer: {
+    backgroundColor: C.surface,
+    padding: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: C.border,
+    marginBottom: 10,
+  },
+  chipRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 10,
+  },
+  chipBtn: {
+    flex: 1,
+    paddingVertical: 9,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: C.border,
+    backgroundColor: C.card,
+    alignItems: 'center',
+  },
+  chipBtnActive: {
+    backgroundColor: C.green,
+    borderColor: C.accent,
+  },
+  chipText: {
+    color: C.textSub,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  chipTextActive: {
+    color: C.accent,
+    fontWeight: '800',
+  },
 
   startBtn: {
     backgroundColor: C.green, margin: 16, marginTop: 24,

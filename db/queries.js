@@ -2,11 +2,11 @@ import db from './database';
 
 // ─── MATCH ───────────────────────────────────────────
 
-export const createMatch = (team1, team2, overs, inningsCount) => {
+export const createMatch = (team1, team2, overs, inningsCount, ballsPerOver = 6) => {
   const result = db.runSync(
-    `INSERT INTO matches (team1, team2, overs, innings_count)
-     VALUES (?, ?, ?, ?)`,
-    [team1, team2, overs, inningsCount]
+    `INSERT INTO matches (team1, team2, overs, innings_count, balls_per_over)
+     VALUES (?, ?, ?, ?, ?)`,
+    [team1, team2, overs, inningsCount, ballsPerOver]
   );
   return result.lastInsertRowId;
 };
@@ -159,9 +159,9 @@ export const getLegalBalls = (inningsId) => {
   return result?.balls || 0;
 };
 
-export const getOversDisplay = (inningsId) => {
+export const getOversDisplay = (inningsId, ballsPerOver = 6) => {
   const balls = getLegalBalls(inningsId);
-  return `${Math.floor(balls / 6)}.${balls % 6}`;
+  return `${Math.floor(balls / ballsPerOver)}.${balls % ballsPerOver}`;
 };
 
 // Batsman's runs = off the bat only (not byes/wides); balls faced excludes wides

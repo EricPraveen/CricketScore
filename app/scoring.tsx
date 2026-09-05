@@ -99,7 +99,7 @@ export default function ScoringScreen() {
 
   // ── Game rules state ─────────────────────────────────────────────────────
   const [isFreeHit,        setIsFreeHit]        = useState(false);
-  const [firstInningsScore, setFirstInningsScore] = useState(0);
+  const [firstInningsScore, setFirstInningsScore] = useState<number | null>(null);
 
   // ── Celebration Overlay State ────────────────────────────────────────────
   const [celebration, setCelebration] = useState<'four' | 'six' | 'wicket' | null>(null);
@@ -123,12 +123,12 @@ export default function ScoringScreen() {
     setBattingPlayers(batting);
     setBowlingPlayers(bowling);
 
-    // 2nd innings: capture target from 1st innings
+    // 2nd innings: capture target from 1st innings (even if 1st innings was 0 runs!)
     const allInnings = getInningsByMatch(Number(matchId));
     if (allInnings.length >= 2) {
       setFirstInningsScore(getTotalRuns(allInnings[0].id));
     } else {
-      setFirstInningsScore(0);
+      setFirstInningsScore(null);
     }
 
     // Try to restore state from existing deliveries
@@ -235,7 +235,7 @@ export default function ScoringScreen() {
 
   /** Returns true and shows alert if target is chased (2nd innings only). */
   const checkTargetChased = (): boolean => {
-    if (firstInningsScore <= 0) return false;
+    if (firstInningsScore === null) return false;
     const newRuns = getTotalRuns(Number(inningsId));
     if (newRuns > firstInningsScore) {
       const wkts = getWickets(Number(inningsId));
@@ -531,7 +531,7 @@ export default function ScoringScreen() {
 
   const totalOversNum = match?.overs ?? 0;
   const oversDisplay  = `${Math.floor(legalBalls / ballsPerOver)}.${legalBalls % ballsPerOver}`;
-  const target        = firstInningsScore > 0 ? firstInningsScore + 1 : 0;
+  const target        = firstInningsScore !== null ? firstInningsScore + 1 : 0;
   const runsNeeded    = target > 0 ? Math.max(0, target - totalRuns) : 0;
   const ballsLeft     = totalOversNum * ballsPerOver - legalBalls;
   const runRate       = legalBalls > 0 ? ((totalRuns / legalBalls) * ballsPerOver).toFixed(2) : '0.00';

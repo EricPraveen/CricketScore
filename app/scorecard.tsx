@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
   SafeAreaView, ScrollView, Share,
@@ -11,18 +12,7 @@ import {
   getPlayersByTeam,
   getTotalRuns, getWickets,
 } from '../db/queries';
-
-const C = {
-  bg:        '#080f0b',
-  surface:   '#0e1d14',
-  card:      '#182a1f',
-  border:    '#1e3d28',
-  accent:    '#00e676',
-  accentDim: '#00b359',
-  text:      '#ffffff',
-  textSub:   '#8fa99a',
-  textMuted: '#4a6655',
-};
+import { CricketColors as C } from '../constants/theme';
 
 export default function ScorecardScreen() {
   const router   = useRouter();
@@ -100,15 +90,25 @@ export default function ScorecardScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView>
-        {/* Header */}
+        {/* Header with Back Arrow */}
         <View style={styles.header}>
-          <Text style={styles.headerText}>Scorecard</Text>
-          <Text style={styles.matchText}>
-            {match?.team1} vs {match?.team2}{ballsPerOver !== 6 ? ` • ${ballsPerOver}b/ov` : ''}
-          </Text>
+          <TouchableOpacity
+            style={styles.backBtn}
+            onPress={() => router.replace('/' as any)}
+            activeOpacity={0.7}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          >
+            <Ionicons name="arrow-back" size={22} color={C.text} />
+          </TouchableOpacity>
+          <View style={styles.headerTextCol}>
+            <Text style={styles.headerText}>Match Scorecard</Text>
+            <Text style={styles.matchText}>
+              {match?.team1} vs {match?.team2}{ballsPerOver !== 6 ? ` • ${ballsPerOver}b/ov` : ''}
+            </Text>
+          </View>
         </View>
 
-        {/* Result */}
+        {/* Result Box */}
         {result !== '' && (
           <View style={styles.resultBox}>
             <Text style={styles.resultText}>{result}</Text>
@@ -152,7 +152,7 @@ export default function ScorecardScreen() {
                   : '-';
                 return (
                   <View key={p.id} style={styles.tableRow}>
-                    <Text style={[styles.tdCell, { flex: 2, textAlign: 'left' }]} numberOfLines={1}>
+                    <Text style={[styles.tdCell, { flex: 2, textAlign: 'left', fontWeight: '600' }]} numberOfLines={1}>
                       {p.name}
                     </Text>
                     <Text style={[styles.tdCell, s.runs >= 50 && styles.highlight]}>
@@ -167,7 +167,7 @@ export default function ScorecardScreen() {
               })}
 
               {/* Bowling table */}
-              <Text style={[styles.tableTitle, { marginTop: 16 }]}>BOWLING</Text>
+              <Text style={[styles.tableTitle, { marginTop: 18 }]}>BOWLING</Text>
               <View style={styles.tableHeader}>
                 <Text style={[styles.thCell, { flex: 2, textAlign: 'left' }]}>Bowler</Text>
                 <Text style={styles.thCell}>O</Text>
@@ -184,12 +184,12 @@ export default function ScorecardScreen() {
                   : '-';
                 return (
                   <View key={p.id} style={styles.tableRow}>
-                    <Text style={[styles.tdCell, { flex: 2, textAlign: 'left' }]} numberOfLines={1}>
+                    <Text style={[styles.tdCell, { flex: 2, textAlign: 'left', fontWeight: '600' }]} numberOfLines={1}>
                       {p.name}
                     </Text>
                     <Text style={styles.tdCell}>{ovs}</Text>
                     <Text style={styles.tdCell}>{s.runs_given}</Text>
-                    <Text style={[styles.tdCell, s.wickets >= 3 && styles.highlight]}>
+                    <Text style={[styles.tdCell, s.wickets >= 3 && styles.highlightWickets]}>
                       {s.wickets}
                     </Text>
                     <Text style={styles.tdCell}>{eco}</Text>
@@ -210,7 +210,7 @@ export default function ScorecardScreen() {
           onPress={() => router.replace('/' as any)}
           activeOpacity={0.85}
         >
-          <Text style={styles.homeBtnText}>🏠 Home</Text>
+          <Text style={styles.homeBtnText}>🏠 Return to Home</Text>
         </TouchableOpacity>
 
         <View style={{ height: 40 }} />
@@ -223,59 +223,80 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: C.bg },
 
   header: {
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: C.surface,
-    padding: 20, alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingTop: 12, paddingBottom: 16,
     borderBottomWidth: 1, borderBottomColor: C.border,
   },
-  headerText:  { color: C.text,    fontSize: 22, fontWeight: '800' },
-  matchText:   { color: C.textSub, fontSize: 14, marginTop: 4 },
+  backBtn: {
+    width: 40, height: 40, borderRadius: 20,
+    backgroundColor: C.bg,
+    borderWidth: 1, borderColor: C.border,
+    justifyContent: 'center', alignItems: 'center',
+    marginRight: 12,
+  },
+  headerTextCol: { flex: 1 },
+  headerText:  { color: C.text, fontSize: 20, fontWeight: '800' },
+  matchText:   { color: C.textSub, fontSize: 13, marginTop: 2 },
 
   resultBox: {
-    backgroundColor: '#0c1c12', margin: 16,
-    padding: 16, borderRadius: 14, alignItems: 'center',
-    borderWidth: 1, borderColor: C.border,
+    backgroundColor: C.greenLight, margin: 16,
+    padding: 16, borderRadius: 16, alignItems: 'center',
+    borderWidth: 1, borderColor: '#86EFAC',
+    shadowColor: C.green, shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1, shadowRadius: 6, elevation: 2,
   },
-  resultText: { color: C.accent, fontSize: 17, fontWeight: '700', textAlign: 'center' },
+  resultText: { color: C.greenDark, fontSize: 16, fontWeight: '800', textAlign: 'center' },
 
   inningsSection: {
-    margin: 16, backgroundColor: C.card,
-    borderRadius: 14, padding: 16,
+    marginHorizontal: 16, marginBottom: 16,
+    backgroundColor: C.card,
+    borderRadius: 16, padding: 18,
     borderWidth: 1, borderColor: C.border,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04, shadowRadius: 8, elevation: 2,
   },
   inningsHeader: {
     borderBottomWidth: 1, borderBottomColor: C.border,
-    paddingBottom: 10, marginBottom: 12,
+    paddingBottom: 12, marginBottom: 14,
   },
-  inningsTitle:  { color: C.accentDim, fontSize: 13, fontWeight: '700' },
-  inningsScore:  { color: C.text,    fontSize: 26, fontWeight: '800', marginTop: 4 },
-  inningsOvers:  { color: C.textSub, fontSize: 14, fontWeight: '400' },
+  inningsTitle:  { color: C.green, fontSize: 12, fontWeight: '800', letterSpacing: 0.5 },
+  inningsScore:  { color: C.text, fontSize: 28, fontWeight: '900', marginTop: 4 },
+  inningsOvers:  { color: C.textSub, fontSize: 15, fontWeight: '500' },
 
-  tableTitle:  { color: C.textMuted, fontSize: 10, marginBottom: 6, letterSpacing: 1.5 },
+  tableTitle:  { color: C.greenDark, fontSize: 11, fontWeight: '800', marginBottom: 8, letterSpacing: 1 },
   tableHeader: {
-    flexDirection: 'row', paddingVertical: 6,
-    borderBottomWidth: 1, borderBottomColor: C.border,
+    flexDirection: 'row', paddingVertical: 8,
+    backgroundColor: '#F8FAF8', borderRadius: 8,
+    borderWidth: 1, borderColor: C.border, marginBottom: 4,
   },
   thCell: {
-    flex: 1, color: C.textMuted, fontSize: 11,
-    fontWeight: '700', textAlign: 'center',
+    flex: 1, color: C.textSub, fontSize: 11,
+    fontWeight: '800', textAlign: 'center',
   },
   tableRow: {
-    flexDirection: 'row', paddingVertical: 9,
-    borderBottomWidth: 1, borderBottomColor: '#0f1f16',
+    flexDirection: 'row', paddingVertical: 10,
+    borderBottomWidth: 1, borderBottomColor: '#F1F5F2',
+    alignItems: 'center',
   },
   tdCell:    { flex: 1, color: C.text, fontSize: 13, textAlign: 'center' },
-  highlight: { color: C.accent, fontWeight: '700' },
+  highlight: { color: C.greenDark, fontWeight: '800' },
+  highlightWickets: { color: C.red, fontWeight: '900' },
 
   shareBtn: {
-    backgroundColor: '#1565c0', margin: 16,
-    padding: 16, borderRadius: 14, alignItems: 'center',
+    backgroundColor: C.green, marginHorizontal: 16, marginBottom: 10,
+    padding: 18, borderRadius: 14, alignItems: 'center',
+    shadowColor: C.green, shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25, shadowRadius: 8, elevation: 4,
   },
-  shareBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  shareBtnText: { color: '#ffffff', fontSize: 16, fontWeight: '800' },
 
   homeBtn: {
-    backgroundColor: C.card, marginHorizontal: 16,
+    backgroundColor: C.surface, marginHorizontal: 16,
     padding: 16, borderRadius: 14, alignItems: 'center',
-    borderWidth: 1, borderColor: C.border,
+    borderWidth: 1.5, borderColor: C.border,
   },
-  homeBtnText: { color: C.textSub, fontSize: 15, fontWeight: '600' },
+  homeBtnText: { color: C.textSub, fontSize: 15, fontWeight: '700' },
 });

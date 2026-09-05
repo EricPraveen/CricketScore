@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import {
@@ -8,19 +9,7 @@ import {
   View,
 } from 'react-native';
 import { addPlayer, createMatch } from '../db/queries';
-
-const C = {
-  bg:        '#080f0b',
-  surface:   '#0e1d14',
-  card:      '#182a1f',
-  border:    '#1e3d28',
-  accent:    '#00e676',
-  accentDim: '#00b359',
-  text:      '#ffffff',
-  textSub:   '#8fa99a',
-  textMuted: '#4a6655',
-  green:     '#1b5e20',
-};
+import { CricketColors as C } from '../constants/theme';
 
 export default function SetupScreen() {
   const router = useRouter();
@@ -104,10 +93,20 @@ export default function SetupScreen() {
     <SafeAreaView style={styles.container}>
       <ScrollView showsVerticalScrollIndicator={false}>
 
-        {/* Header */}
+        {/* Header with Back Arrow */}
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>Match Setup</Text>
-          <Text style={styles.headerSub}>Configure your match</Text>
+          <TouchableOpacity
+            style={styles.backBtn}
+            onPress={() => router.back()}
+            activeOpacity={0.7}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          >
+            <Ionicons name="arrow-back" size={22} color={C.text} />
+          </TouchableOpacity>
+          <View style={styles.headerTextCol}>
+            <Text style={styles.headerTitle}>Match Setup</Text>
+            <Text style={styles.headerSub}>Configure your teams & rules</Text>
+          </View>
         </View>
 
         {/* Match Settings */}
@@ -312,53 +311,68 @@ export default function SetupScreen() {
 const styles = StyleSheet.create({
   container:  { flex: 1, backgroundColor: C.bg },
   header: {
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: C.surface,
-    paddingHorizontal: 20,
-    paddingTop: 16, paddingBottom: 20,
+    paddingHorizontal: 16,
+    paddingTop: 12, paddingBottom: 16,
     borderBottomWidth: 1, borderBottomColor: C.border,
   },
-  headerTitle:  { color: C.text,    fontSize: 24, fontWeight: '800' },
-  headerSub:    { color: C.textSub, fontSize: 13, marginTop: 4 },
+  backBtn: {
+    width: 40, height: 40, borderRadius: 20,
+    backgroundColor: C.bg,
+    borderWidth: 1, borderColor: C.border,
+    justifyContent: 'center', alignItems: 'center',
+    marginRight: 12,
+  },
+  headerTextCol: { flex: 1 },
+  headerTitle:  { color: C.text, fontSize: 20, fontWeight: '800' },
+  headerSub:    { color: C.textSub, fontSize: 13, marginTop: 2 },
 
   section: {
     margin: 16, marginBottom: 0, marginTop: 16,
     backgroundColor: C.card,
-    borderRadius: 14, padding: 16,
+    borderRadius: 16, padding: 18,
     borderWidth: 1, borderColor: C.border,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 2,
   },
   sectionLabel: {
-    color: C.accentDim, fontSize: 11, fontWeight: '800',
+    color: C.green, fontSize: 11, fontWeight: '800',
     letterSpacing: 1.5, marginBottom: 12,
   },
 
   input: {
-    backgroundColor: C.surface, color: C.text,
+    backgroundColor: '#F8FAF8', color: C.text,
     padding: 14, borderRadius: 10, marginBottom: 10,
     fontSize: 15, borderWidth: 1, borderColor: C.border,
   },
 
   fieldLabel: {
-    color: C.textMuted, fontSize: 11, letterSpacing: 1, marginBottom: 8,
+    color: C.textSub, fontSize: 12, fontWeight: '700', letterSpacing: 0.5, marginBottom: 8,
     marginTop: 4,
   },
   toggleRow:    { flexDirection: 'row', gap: 10, marginBottom: 10 },
   toggleBtn: {
     flex: 1, paddingVertical: 13, borderRadius: 10,
     borderWidth: 1, borderColor: C.border,
-    backgroundColor: C.surface, alignItems: 'center',
+    backgroundColor: '#F8FAF8', alignItems: 'center',
   },
-  toggleBtnActive: { backgroundColor: C.green, borderColor: C.accent },
+  toggleBtnActive: { backgroundColor: C.greenLight, borderColor: C.green },
   toggleText:      { color: C.textSub, fontSize: 14, fontWeight: '600' },
-  toggleTextActive:{ color: C.text,    fontSize: 14, fontWeight: '800' },
-  inningsBadgeText:{ color: C.textMuted, fontSize: 12, textAlign: 'center', marginTop: 2 },
+  toggleTextActive:{ color: C.greenDark, fontSize: 14, fontWeight: '800' },
+  inningsBadgeText:{ color: C.textSub, fontSize: 12, textAlign: 'center', marginTop: 2 },
 
   customContainer: {
-    backgroundColor: C.surface,
-    padding: 12,
-    borderRadius: 10,
+    backgroundColor: C.surfaceWarm,
+    padding: 14,
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: C.border,
-    marginBottom: 10,
+    borderColor: '#FDE68A',
+    marginBottom: 12,
   },
   chipRow: {
     flexDirection: 'row',
@@ -371,12 +385,12 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     borderWidth: 1,
     borderColor: C.border,
-    backgroundColor: C.card,
+    backgroundColor: C.surface,
     alignItems: 'center',
   },
   chipBtnActive: {
-    backgroundColor: C.green,
-    borderColor: C.accent,
+    backgroundColor: C.greenLight,
+    borderColor: C.green,
   },
   chipText: {
     color: C.textSub,
@@ -384,7 +398,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   chipTextActive: {
-    color: C.accent,
+    color: C.greenDark,
     fontWeight: '800',
   },
 
@@ -412,14 +426,14 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     marginBottom: 10,
     borderRadius: 10,
-    backgroundColor: '#2a1313',
+    backgroundColor: C.redLight,
     borderWidth: 1,
-    borderColor: '#4d2020',
+    borderColor: '#FECACA',
     justifyContent: 'center',
     alignItems: 'center',
   },
   removePlayerText: {
-    color: '#ff5252',
+    color: C.red,
     fontSize: 13,
     fontWeight: 'bold',
   },
@@ -430,19 +444,19 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingVertical: 12,
     borderRadius: 10,
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderStyle: 'dashed',
-    borderColor: C.border,
-    backgroundColor: C.surface,
+    borderColor: C.green,
+    backgroundColor: C.greenLight,
     marginTop: 4,
   },
   addPlayerIcon: {
-    color: C.accent,
+    color: C.greenDark,
     fontSize: 17,
     fontWeight: 'bold',
   },
   addPlayerText: {
-    color: C.accent,
+    color: C.greenDark,
     fontSize: 13,
     fontWeight: '700',
   },
@@ -450,6 +464,11 @@ const styles = StyleSheet.create({
   startBtn: {
     backgroundColor: C.green, margin: 16, marginTop: 24,
     padding: 18, borderRadius: 14, alignItems: 'center',
+    shadowColor: C.green,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
+    elevation: 4,
   },
-  startBtnText: { color: C.text, fontSize: 17, fontWeight: '800' },
+  startBtnText: { color: '#FFFFFF', fontSize: 17, fontWeight: '800' },
 });

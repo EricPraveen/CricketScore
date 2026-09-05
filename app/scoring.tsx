@@ -1,12 +1,15 @@
+import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import {
-  Alert, Modal,
+  Alert, Image, Modal,
   SafeAreaView, ScrollView,
   StyleSheet,
   Text, TouchableOpacity,
   View,
 } from 'react-native';
+import CelebrationOverlay from '../components/CelebrationOverlay';
+import { CricketColors as C } from '../constants/theme';
 import {
   Delivery, Player,
   addDelivery,
@@ -23,30 +26,48 @@ import {
   updateMatchStatus,
 } from '../db/queries';
 
-// ─── Colour palette ────────────────────────────────────────────────────────────
-const C = {
-  bg:        '#080f0b',
-  surface:   '#0e1d14',
-  surface2:  '#132019',
-  card:      '#182a1f',
-  cardActive:'#1e3d28',
-  border:    '#1e3d28',
-  accent:    '#00e676',
-  accentDim: '#00b359',
-  text:      '#ffffff',
-  textSub:   '#8fa99a',
-  textMuted: '#4a6655',
-  red:       '#f44336',
-  redDark:   '#b71c1c',
-  blue:      '#2979ff',
-  purple:    '#9c27b0',
-  orange:    '#ff9800',
-  yellow:    '#FFD600',
-  dot:       '#263238',
-};
+// ─── Wicket types with visual image assets ─────────────────────────────────────
+const WICKET_OPTIONS = [
+  {
+    type: 'Bowled',
+    image: require('../assets/wicket_bowled.png'),
+    desc: 'Ball shattered stumps & bails',
+    badge: '#DC2626',
+  },
+  {
+    type: 'Caught',
+    image: require('../assets/wicket_caught.png'),
+    desc: 'Fielder cleanly took the catch',
+    badge: '#2563EB',
+  },
+  {
+    type: 'LBW',
+    image: require('../assets/wicket_lbw.png'),
+    desc: 'Ball struck the pad in line',
+    badge: '#D97706',
+  },
+  {
+    type: 'Run Out',
+    image: require('../assets/wicket_runout.png'),
+    desc: 'Direct hit / Wicket dislodged',
+    badge: '#EA580C',
+  },
+  {
+    type: 'Stumped',
+    image: require('../assets/wicket_stumped.png'),
+    desc: 'Keeper whipped off the bails',
+    badge: '#7C3AED',
+  },
+  {
+    type: 'Hit Wicket',
+    image: require('../assets/wicket_hit_wicket.png'),
+    desc: 'Bat crashed into stumps & bails',
+    badge: '#4B5563',
+  },
+] as const;
 
-// ─── Wicket types ──────────────────────────────────────────────────────────────
-const WICKET_TYPES = ['Bowled', 'Caught', 'LBW', 'Run Out', 'Stumped', 'Hit Wicket'] as const;
+type WicketType = typeof WICKET_OPTIONS[number]['type'];
+const WICKET_TYPES = WICKET_OPTIONS.map(w => w.type);
 
 // ─── Component ────────────────────────────────────────────────────────────────
 export default function ScoringScreen() {
@@ -79,6 +100,9 @@ export default function ScoringScreen() {
   // ── Game rules state ─────────────────────────────────────────────────────
   const [isFreeHit,        setIsFreeHit]        = useState(false);
   const [firstInningsScore, setFirstInningsScore] = useState(0);
+
+  // ── Celebration Overlay State ────────────────────────────────────────────
+  const [celebration, setCelebration] = useState<'four' | 'six' | 'wicket' | null>(null);
 
   // ── Modal state ──────────────────────────────────────────────────────────
   const [wicketModal,        setWicketModal]        = useState(false);
@@ -160,6 +184,17 @@ export default function ScoringScreen() {
     const newNonStriker = striker;
     setStriker(newStriker);
     setNonStriker(newNonStriker);
+  };
+
+  const handleBack = () => {
+    Alert.alert(
+      'Leave Match?',
+      'Your live scoring progress is automatically saved. You can resume this match anytime from the Home screen.',
+      [
+        { text: 'Stay Here', style: 'cancel' },
+        { text: 'Leave to Home', style: 'destructive', onPress: () => router.replace('/' as any) },
+      ]
+    );
   };
 
   // ── Innings / match end ──────────────────────────────────────────────────
@@ -250,6 +285,13 @@ export default function ScoringScreen() {
       false, null, null, // no wicket
       isFreeHit   // was this ball a free hit?
     );
+
+    // Trigger celebration animations for boundaries
+    if (runs === 4) {
+      setCelebration('four');
+    } else if (runs === 6) {
+      setCelebration('six');
+    }
 
     // Update free-hit state:
     //  – No-ball bowled → next delivery is free hit
@@ -357,6 +399,7 @@ export default function ScoringScreen() {
 
     // 2. Track dismissed player so they do not reappear in batsman list
     setDismissedIds(prev => [...prev, dismissed.id]);
+    setCelebration('wicket');
 
     // 3. Legal delivery ends the Free Hit
     if (isLegalDelivery) {
@@ -475,13 +518,13 @@ export default function ScoringScreen() {
     return d.batsman_runs.toString();
   };
 
-  const getBallColor = (d: Delivery): string => {
-    if (d.is_wicket)                   return '#c62828';
-    if (d.extras_type === 'wide' || d.extras_type === 'noball') return '#e65100';
-    if (d.batsman_runs === 6)          return '#6a1b9a';
-    if (d.batsman_runs === 4)          return '#1565c0';
-    if (d.batsman_runs > 0)            return '#1b5e20';
-    return C.dot;
+  const getBallBadge = (d: Delivery): { bg: string; text: string; border: string } => {
+    if (d.is_wicket) return { bg: '#FEE2E2', text: '#DC2626', border: '#FCA5A5' };
+    if (d.extras_type === 'wide' || d.extras_type === 'noball') return { bg: '#FEF3C7', text: '#D97706', border: '#FDE68A' };
+    if (d.batsman_runs === 6) return { bg: '#F3E8FF', text: '#7C3AED', border: '#DDD6FE' };
+    if (d.batsman_runs === 4) return { bg: '#DCFCE7', text: '#15803D', border: '#86EFAC' };
+    if (d.batsman_runs > 0)   return { bg: '#F1F5F2', text: '#0F172A', border: '#E2EBE3' };
+    return { bg: '#F8FAF8', text: '#94A3B8', border: '#EDF2EE' };
   };
 
   // ── Computed display values ───────────────────────────────────────────────
@@ -519,56 +562,109 @@ export default function ScoringScreen() {
     : '';
 
   // ── Render ─────────────────────────────────────────────────────────────────
+  const allInningsLength = getInningsByMatch(Number(matchId)).length;
+
   return (
     <SafeAreaView style={styles.container}>
+      {/* ── Top Header Navigation Bar ── */}
+      <View style={styles.topNav}>
+        <TouchableOpacity
+          style={styles.navBackBtn}
+          onPress={handleBack}
+          activeOpacity={0.7}
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+        >
+          <Ionicons name="arrow-back" size={20} color={C.text} />
+        </TouchableOpacity>
+        <View style={styles.navCenter}>
+          <Text style={styles.navMatchTitle} numberOfLines={1}>
+            {match?.team1} vs {match?.team2}
+          </Text>
+          <Text style={styles.navInningsSub}>
+            {allInningsLength <= 1 ? '1st Innings' : '2nd Innings (Chase)'} • {totalOversNum} Ov Match{ballsPerOver !== 6 ? ` (${ballsPerOver}b/ov)` : ''}
+          </Text>
+        </View>
+        <View style={styles.liveBadge}>
+          <View style={styles.liveDot} />
+          <Text style={styles.liveText}>LIVE</Text>
+        </View>
+      </View>
+
       <ScrollView showsVerticalScrollIndicator={false} bounces={false}>
 
-        {/* ── Scoreboard ── */}
+        {/* ── Scoreboard Card ── */}
         <View style={styles.scoreboard}>
-          <Text style={styles.teamsText}>
-            {battingTeam}{' '}
-            <Text style={styles.vsText}>vs</Text>
-            {' '}{bowlingTeam}
-          </Text>
+          <View style={styles.scoreTopRow}>
+            <Text style={styles.teamsText}>
+              {battingTeam} <Text style={styles.vsText}>vs</Text> {bowlingTeam}
+            </Text>
+            {target > 0 && (
+              <View style={styles.targetBadgeCompact}>
+                <Text style={styles.targetBadgeText}>Target <Text style={{ fontWeight: '900', color: C.text }}>{target}</Text></Text>
+              </View>
+            )}
+          </View>
 
           {/* FREE HIT Badge */}
           {isFreeHit && (
             <View style={styles.freeHitBadge}>
-              <Text style={styles.freeHitText}>🟡 FREE HIT!</Text>
+              <Text style={styles.freeHitText}>🟡 FREE HIT DELIVERY!</Text>
             </View>
           )}
 
-          <Text style={styles.scoreText}>{totalRuns}/{wickets}</Text>
-
-          <View style={styles.scoreMetaRow}>
-            <Text style={styles.oversText}>
-              {oversDisplay} / {totalOversNum} ov{ballsPerOver !== 6 ? ` (${ballsPerOver}b)` : ''}
+          <View style={styles.scoreRowCenter}>
+            <Text style={styles.scoreText}>
+              {totalRuns}<Text style={styles.scoreSlash}>/</Text><Text style={styles.scoreWickets}>{wickets}</Text>
             </Text>
-            <View style={styles.rrPill}>
-              <Text style={styles.rrText}>CRR {runRate}</Text>
-            </View>
-          </View>
-        </View>
-
-        {/* ── Target bar — 2nd innings only ── */}
-        {target > 0 && (
-          <View style={styles.targetBox}>
-            <View style={styles.targetHeader}>
-              <Text style={styles.targetNeedText}>
-                {runsNeeded === 0
-                  ? '🏆 Target Reached!'
-                  : `Need ${runsNeeded} off ${ballsLeft} ball${ballsLeft !== 1 ? 's' : ''}`}
-              </Text>
-              <View style={styles.rrrPill}>
-                <Text style={styles.rrrText}>RRR {requiredRR}</Text>
+            <View style={styles.scoreMetaColumn}>
+              <View style={styles.oversBadge}>
+                <Text style={styles.oversText}>
+                  {oversDisplay} / {totalOversNum} ov{ballsPerOver !== 6 ? ` (${ballsPerOver}b)` : ''}
+                </Text>
+              </View>
+              <View style={styles.rrPill}>
+                <Text style={styles.rrText}>CRR {runRate}</Text>
               </View>
             </View>
-            <View style={styles.targetBarBg}>
-              <View style={[styles.targetBarFill, { width: `${Math.round(targetPct * 100)}%` as any }]} />
-            </View>
-            <Text style={styles.targetLabel}>Target: {target}</Text>
           </View>
-        )}
+
+          {/* Chase Banner (Directly inside scoreboard for 2nd innings to eliminate scrolling) */}
+          {target > 0 && (
+            <View style={styles.compactChaseBanner}>
+              <View style={styles.chaseHeaderRow}>
+                <Text style={styles.chaseSummaryText}>
+                  {runsNeeded === 0 ? (
+                    <Text style={{ color: C.green, fontWeight: '900' }}>🏆 Target Achieved!</Text>
+                  ) : ballsLeft <= 0 ? (
+                    <Text style={{ color: C.red, fontWeight: '900' }}>Overs Completed</Text>
+                  ) : (
+                    <>
+                      Need <Text style={styles.chaseHighlightNum}>{runsNeeded}</Text> off{' '}
+                      <Text style={styles.chaseHighlightNum}>{ballsLeft}</Text> balls
+                    </>
+                  )}
+                </Text>
+                <View style={[styles.compactRrrBadge, Number(requiredRR) > 10 ? styles.compactRrrUrgent : null]}>
+                  <Text style={[styles.compactRrrText, { color: Number(requiredRR) > 10 ? C.red : C.greenDark }]}>
+                    RRR {requiredRR}
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.chaseProgressBarBg}>
+                <View
+                  style={[
+                    styles.chaseProgressBarFill,
+                    {
+                      width: `${Math.round(targetPct * 100)}%` as any,
+                      backgroundColor: runsNeeded === 0 ? C.green : Number(requiredRR) > 10 ? C.red : C.green,
+                    },
+                  ]}
+                />
+              </View>
+            </View>
+          )}
+        </View>
 
         {/* ── Current Over ── */}
         <View style={styles.overContainer}>
@@ -577,11 +673,14 @@ export default function ScoringScreen() {
             <View style={styles.overBalls}>
               {currentOver.length === 0
                 ? <Text style={styles.emptyOver}>—</Text>
-                : currentOver.map((ball, i) => (
-                  <View key={i} style={[styles.ball, { backgroundColor: getBallColor(ball) }]}>
-                    <Text style={styles.ballText}>{getBallLabel(ball)}</Text>
-                  </View>
-                ))}
+                : currentOver.map((ball, i) => {
+                    const badge = getBallBadge(ball);
+                    return (
+                      <View key={i} style={[styles.ball, { backgroundColor: badge.bg, borderColor: badge.border, borderWidth: 1 }]}>
+                        <Text style={[styles.ballText, { color: badge.text }]}>{getBallLabel(ball)}</Text>
+                      </View>
+                    );
+                  })}
             </View>
           </ScrollView>
         </View>
@@ -627,9 +726,16 @@ export default function ScoringScreen() {
         {/* ── Bowler ── */}
         <View style={styles.bowlerRow}>
           <View style={styles.bowlerInfo}>
-            <Text style={styles.bowlerName} numberOfLines={1}>
-              🎳 {currentBowler?.name ?? 'Select Bowler'}
-            </Text>
+            <View style={styles.bowlerNameRow}>
+              <Image
+                source={require('../assets/cricket_ball.png')}
+                style={styles.bowlerBallImg}
+                resizeMode="contain"
+              />
+              <Text style={styles.bowlerName} numberOfLines={1}>
+                {currentBowler?.name ?? 'Select Bowler'}
+              </Text>
+            </View>
             {currentBowler && (() => {
               const bs  = getBowlerStats(Number(inningsId), currentBowler.id);
               const ovs = `${Math.floor(bs.balls_bowled / ballsPerOver)}.${bs.balls_bowled % ballsPerOver}`;
@@ -698,7 +804,9 @@ export default function ScoringScreen() {
             <Text style={styles.undoBtnText}>↩ Undo</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.wicketBtn} onPress={handleWicket} activeOpacity={0.8}>
-            <Text style={styles.wicketBtnText}>🔴 Wicket</Text>
+            <View style={styles.wicketInner}>
+              <Text style={styles.wicketBtnText}>⚡ WICKET (OUT)</Text>
+            </View>
           </TouchableOpacity>
         </View>
 
@@ -720,23 +828,39 @@ export default function ScoringScreen() {
                 </Text>
               </View>
             )}
-            {WICKET_TYPES.map(type => (
-              <TouchableOpacity
-                key={type}
-                style={[
-                  styles.modalOption,
-                  isFreeHit && type !== 'Run Out' && styles.modalOptionDisabled,
-                ]}
-                onPress={() => confirmWicket(type)}
-              >
-                <Text style={[
-                  styles.modalOptionText,
-                  isFreeHit && type !== 'Run Out' && styles.modalOptionTextDisabled,
-                ]}>
-                  {type}
-                </Text>
-              </TouchableOpacity>
-            ))}
+            <View style={styles.wicketOptionsList}>
+              {WICKET_OPTIONS.map(({ type, image, desc, badge }) => (
+                <TouchableOpacity
+                  key={type}
+                  style={[
+                    styles.wicketOptionCard,
+                    isFreeHit && type !== 'Run Out' && styles.modalOptionDisabled,
+                  ]}
+                  onPress={() => confirmWicket(type)}
+                  activeOpacity={0.7}
+                >
+                  <View style={[styles.wicketIconBox, { backgroundColor: `${badge}15` }]}>
+                    <Image
+                      source={image}
+                      style={styles.wicketOptionImg}
+                      resizeMode="cover"
+                    />
+                  </View>
+                  <View style={styles.wicketOptionInfo}>
+                    <Text
+                      style={[
+                        styles.wicketOptionTitle,
+                        isFreeHit && type !== 'Run Out' && styles.modalOptionTextDisabled,
+                      ]}
+                    >
+                      {type}
+                    </Text>
+                    <Text style={styles.wicketOptionDesc}>{desc}</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={18} color={C.textMuted} />
+                </TouchableOpacity>
+              ))}
+            </View>
             <TouchableOpacity
               style={styles.modalCancel}
               onPress={() => setWicketModal(false)}
@@ -932,6 +1056,13 @@ export default function ScoringScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* ─────── CELEBRATION ANIMATION OVERLAY ─────── */}
+      <CelebrationOverlay
+        visible={celebration !== null}
+        type={celebration}
+        onDismiss={() => setCelebration(null)}
+      />
     </SafeAreaView>
   );
 }
@@ -940,206 +1071,309 @@ export default function ScoringScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: C.bg },
 
+  // Top Nav
+  topNav: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: C.surface,
+    paddingHorizontal: 16,
+    paddingTop: 10, paddingBottom: 12,
+    borderBottomWidth: 1, borderBottomColor: C.border,
+  },
+  navBackBtn: {
+    width: 38, height: 38, borderRadius: 19,
+    backgroundColor: C.bg, borderWidth: 1, borderColor: C.border,
+    justifyContent: 'center', alignItems: 'center', marginRight: 12,
+  },
+  navCenter: { flex: 1 },
+  navMatchTitle: { color: C.text, fontSize: 16, fontWeight: '800' },
+  navInningsSub: { color: C.textSub, fontSize: 12, marginTop: 1 },
+  liveBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: C.redLight, paddingHorizontal: 10, paddingVertical: 4,
+    borderRadius: 12, borderWidth: 1, borderColor: '#FECACA',
+  },
+  liveDot: {
+    width: 7, height: 7, borderRadius: 3.5, backgroundColor: C.red,
+  },
+  liveText: {
+    color: C.red, fontSize: 11, fontWeight: '800', letterSpacing: 0.5,
+  },
+
   // Scoreboard
   scoreboard: {
     backgroundColor: C.surface,
-    paddingHorizontal: 20, paddingTop: 16, paddingBottom: 18,
-    alignItems: 'center',
-    borderBottomWidth: 1, borderBottomColor: C.border,
+    marginHorizontal: 12, marginTop: 8, marginBottom: 8,
+    borderRadius: 16,
+    paddingHorizontal: 16, paddingVertical: 12,
+    borderWidth: 1, borderColor: C.border,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04, shadowRadius: 6, elevation: 2,
   },
-  teamsText:    { color: C.textSub, fontSize: 12, letterSpacing: 1.2, marginBottom: 4 },
-  vsText:       { color: C.textMuted },
+  scoreTopRow: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    marginBottom: 4,
+  },
+  teamsText: { color: C.textSub, fontSize: 13, fontWeight: '700', letterSpacing: 0.3 },
+  vsText:    { color: C.red, fontWeight: '900' },
+  targetBadgeCompact: {
+    backgroundColor: C.surfaceWarm, paddingHorizontal: 10, paddingVertical: 3,
+    borderRadius: 10, borderWidth: 1, borderColor: '#FDE68A',
+  },
+  targetBadgeText: { color: C.textSub, fontSize: 11, fontWeight: '700' },
   freeHitBadge: {
-    backgroundColor: '#2a2000', borderWidth: 1, borderColor: C.yellow,
-    borderRadius: 20, paddingHorizontal: 14, paddingVertical: 4,
+    backgroundColor: '#FEF3C7', borderWidth: 1, borderColor: '#FDE68A',
+    borderRadius: 16, paddingHorizontal: 10, paddingVertical: 3,
+    marginVertical: 4, alignSelf: 'center',
+  },
+  freeHitText: { color: '#B45309', fontSize: 11, fontWeight: '800', letterSpacing: 0.5 },
+  scoreRowCenter: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingVertical: 2,
+  },
+  scoreText:   { color: C.text, fontSize: 42, fontWeight: '900', letterSpacing: -1 },
+  scoreSlash:  { color: C.textMuted, fontWeight: '400' },
+  scoreWickets:{ color: C.red, fontWeight: '900' },
+  scoreMetaColumn: { alignItems: 'flex-end', gap: 4 },
+  oversBadge: {
+    backgroundColor: '#F1F5F2', paddingHorizontal: 10, paddingVertical: 3,
+    borderRadius: 12, borderWidth: 1, borderColor: C.border,
+  },
+  oversText:   { color: C.textSub, fontSize: 12, fontWeight: '700' },
+  rrPill: {
+    backgroundColor: C.greenLight, paddingHorizontal: 10, paddingVertical: 3,
+    borderRadius: 12, borderWidth: 1, borderColor: '#86EFAC',
+  },
+  rrText: { color: C.greenDark, fontSize: 11, fontWeight: '800' },
+
+  // Integrated Compact Chase Banner (Within Scoreboard)
+  compactChaseBanner: {
+    marginTop: 8, paddingTop: 8,
+    borderTopWidth: 1, borderTopColor: '#F1F5F2',
+  },
+  chaseHeaderRow: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     marginBottom: 6,
   },
-  freeHitText: { color: C.yellow, fontSize: 13, fontWeight: '800', letterSpacing: 0.5 },
-  scoreText:   { color: C.text, fontSize: 56, fontWeight: '800', letterSpacing: -2 },
-  scoreMetaRow:{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 4 },
-  oversText:   { color: C.textSub, fontSize: 13 },
-  rrPill: {
-    backgroundColor: C.surface2, paddingHorizontal: 10, paddingVertical: 4,
-    borderRadius: 20, borderWidth: 1, borderColor: C.border,
+  chaseSummaryText: { color: C.text, fontSize: 13, fontWeight: '700' },
+  chaseHighlightNum: { color: C.red, fontWeight: '900', fontSize: 15 },
+  compactRrrBadge: {
+    backgroundColor: C.greenLight, paddingHorizontal: 8, paddingVertical: 2,
+    borderRadius: 8, borderWidth: 1, borderColor: '#86EFAC',
   },
-  rrText: { color: C.accent, fontSize: 12, fontWeight: '700' },
-
-  // Target
-  targetBox: {
-    backgroundColor: '#0c1c12', paddingHorizontal: 16, paddingVertical: 12,
-    borderBottomWidth: 1, borderBottomColor: C.border,
+  compactRrrUrgent: {
+    backgroundColor: '#FEE2E2', borderColor: '#FCA5A5',
   },
-  targetHeader:   { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
-  targetNeedText: { color: C.text, fontSize: 14, fontWeight: '600', flex: 1, marginRight: 8 },
-  rrrPill: {
-    backgroundColor: '#1a1500', paddingHorizontal: 10, paddingVertical: 4,
-    borderRadius: 20, borderWidth: 1, borderColor: '#3d2f00',
+  compactRrrText: { fontSize: 11, fontWeight: '800' },
+  chaseProgressBarBg: {
+    height: 6, backgroundColor: '#E2EBE3', borderRadius: 3, overflow: 'hidden',
   },
-  rrrText:       { color: C.orange, fontSize: 12, fontWeight: '700' },
-  targetBarBg:   { height: 6, backgroundColor: C.surface2, borderRadius: 3, overflow: 'hidden' },
-  targetBarFill: { height: 6, backgroundColor: C.accent, borderRadius: 3 },
-  targetLabel:   { color: C.textMuted, fontSize: 11, marginTop: 6, textAlign: 'right' },
+  chaseProgressBarFill: {
+    height: 6, borderRadius: 3,
+  },
 
   // Current over
   overContainer: {
     backgroundColor: C.surface,
-    paddingHorizontal: 16, paddingVertical: 10,
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    borderBottomWidth: 1, borderBottomColor: C.border,
-  },
-  overLabel: { color: C.textMuted, fontSize: 10, letterSpacing: 1.5 },
-  overBalls: { flexDirection: 'row', gap: 6, alignItems: 'center' },
-  emptyOver: { color: C.textMuted, fontSize: 18 },
-  ball: {
-    width: 36, height: 36, borderRadius: 18,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  ballText: { color: '#fff', fontSize: 11, fontWeight: '800' },
-
-  // Batsmen
-  playersRow:  { flexDirection: 'row', padding: 10, gap: 8 },
-  playerCard: {
-    flex: 1, backgroundColor: C.card,
-    borderRadius: 14, padding: 12,
+    marginHorizontal: 12, marginBottom: 8,
+    borderRadius: 14,
+    paddingHorizontal: 14, paddingVertical: 8,
+    flexDirection: 'row', alignItems: 'center', gap: 10,
     borderWidth: 1, borderColor: C.border,
   },
-  strikerCard: { borderColor: C.accentDim, backgroundColor: C.cardActive },
-  playerNameLabel: { color: C.text, fontSize: 12, fontWeight: '700', marginBottom: 6 },
-  playerScore:     { color: C.text, fontSize: 24, fontWeight: '800' },
-  playerBalls:     { fontSize: 14, fontWeight: '400', color: C.textSub },
-  playerMeta:      { color: C.textMuted, fontSize: 11, marginTop: 4 },
+  overLabel: { color: C.greenDark, fontSize: 10, fontWeight: '800', letterSpacing: 1 },
+  overBalls: { flexDirection: 'row', gap: 5, alignItems: 'center' },
+  emptyOver: { color: C.textMuted, fontSize: 14 },
+  ball: {
+    width: 28, height: 28, borderRadius: 14,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  ballText: { fontSize: 10, fontWeight: '800' },
+
+  // Batsmen
+  playersRow:  { flexDirection: 'row', marginHorizontal: 10, gap: 8, marginBottom: 8 },
+  playerCard: {
+    flex: 1, backgroundColor: C.surface,
+    borderRadius: 14, padding: 10,
+    borderWidth: 1, borderColor: C.border,
+  },
+  strikerCard: { borderColor: C.green, backgroundColor: C.greenLight },
+  playerNameLabel: { color: C.text, fontSize: 12, fontWeight: '800', marginBottom: 2 },
+  playerScore:     { color: C.text, fontSize: 20, fontWeight: '900' },
+  playerBalls:     { fontSize: 12, fontWeight: '500', color: C.textSub },
+  playerMeta:      { color: C.textSub, fontSize: 10, fontWeight: '600', marginTop: 2 },
 
   // Bowler
   bowlerRow: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    backgroundColor: C.card, marginHorizontal: 10, borderRadius: 14,
-    padding: 12, marginBottom: 8, borderWidth: 1, borderColor: C.border,
+    backgroundColor: C.surface, marginHorizontal: 12, borderRadius: 14,
+    paddingHorizontal: 12, paddingVertical: 8, marginBottom: 8, borderWidth: 1, borderColor: C.border,
   },
   bowlerInfo:  { flex: 1, marginRight: 8 },
-  bowlerName:  { color: C.text,    fontSize: 13, fontWeight: '600' },
-  bowlerStats: { color: C.textSub, fontSize: 11, marginTop: 3 },
-  changeBtn: {
-    backgroundColor: C.surface2, paddingHorizontal: 14, paddingVertical: 7,
-    borderRadius: 20, borderWidth: 1, borderColor: C.border,
+  bowlerNameRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  bowlerBallImg: {
+    width: 16, height: 16,
+    borderRadius: 8,
   },
-  changeBtnText: { color: C.accent, fontSize: 12, fontWeight: '600' },
+  bowlerName:  { color: C.text, fontSize: 13, fontWeight: '800' },
+  bowlerStats: { color: C.textSub, fontSize: 11, fontWeight: '600', marginTop: 1 },
+  changeBtn: {
+    backgroundColor: C.bg, paddingHorizontal: 12, paddingVertical: 5,
+    borderRadius: 16, borderWidth: 1, borderColor: C.border,
+  },
+  changeBtnText: { color: C.green, fontSize: 11, fontWeight: '700' },
 
   // Run buttons
   runButtons: {
     flexDirection: 'row', flexWrap: 'wrap',
-    paddingHorizontal: 10, gap: 8,
+    paddingHorizontal: 8, gap: 6,
     justifyContent: 'center', marginBottom: 8,
   },
   runBtn: {
-    width: 90, height: 90, borderRadius: 45,
-    backgroundColor: C.card,
+    width: '31%', height: 50, borderRadius: 12,
+    backgroundColor: C.surface,
     alignItems: 'center', justifyContent: 'center',
-    borderWidth: 2, borderColor: C.border,
+    borderWidth: 1.2, borderColor: C.border,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.03, shadowRadius: 3, elevation: 1,
   },
-  runBtn0: { borderColor: C.dot,    backgroundColor: '#121c18' },
-  runBtn4: { borderColor: C.blue,   backgroundColor: '#0a1a35' },
-  runBtn6: { borderColor: C.purple, backgroundColor: '#160a22' },
-  runBtnText:  { color: C.text,     fontSize: 28, fontWeight: '800' },
-  runBtnText4: { color: '#82b1ff' },
-  runBtnText6: { color: '#e040fb' },
+  runBtn0: { borderColor: '#E2EBE3', backgroundColor: '#F8FAF8' },
+  runBtn4: { borderColor: '#10B981', backgroundColor: '#ECFDF5' },
+  runBtn6: { borderColor: '#8B5CF6', backgroundColor: '#FAF5FF' },
+  runBtnText:  { color: C.text, fontSize: 22, fontWeight: '900' },
+  runBtnText4: { color: '#047857' },
+  runBtnText6: { color: '#7C3AED' },
 
   // Extras
-  extrasRow: { flexDirection: 'row', paddingHorizontal: 10, gap: 6, marginBottom: 8 },
+  extrasRow: { flexDirection: 'row', paddingHorizontal: 12, gap: 6, marginBottom: 8 },
   extraBtn: {
-    flex: 1, backgroundColor: '#140f00',
-    paddingVertical: 12, borderRadius: 12, alignItems: 'center',
-    borderWidth: 1, borderColor: '#3d2f00',
+    flex: 1, backgroundColor: '#FFFBEB',
+    paddingVertical: 9, borderRadius: 10, alignItems: 'center',
+    borderWidth: 1, borderColor: '#FDE68A',
   },
-  extraBtnText: { color: C.orange, fontSize: 12, fontWeight: '700' },
+  extraBtnText: { color: '#B45309', fontSize: 11, fontWeight: '800' },
 
   // Bottom row
-  bottomRow: { flexDirection: 'row', paddingHorizontal: 10, gap: 8 },
+  bottomRow: { flexDirection: 'row', paddingHorizontal: 12, gap: 8 },
   undoBtn: {
-    flex: 1, backgroundColor: C.card,
-    paddingVertical: 16, borderRadius: 14, alignItems: 'center',
-    borderWidth: 1, borderColor: C.border,
+    flex: 1, backgroundColor: C.surface,
+    paddingVertical: 12, borderRadius: 12, alignItems: 'center',
+    borderWidth: 1.5, borderColor: C.border,
   },
-  undoBtnText: { color: C.textSub, fontSize: 15, fontWeight: '600' },
+  undoBtnText: { color: C.textSub, fontSize: 14, fontWeight: '700' },
   wicketBtn: {
-    flex: 2, backgroundColor: C.redDark,
-    paddingVertical: 16, borderRadius: 14, alignItems: 'center',
+    flex: 2, backgroundColor: C.red,
+    paddingVertical: 12, borderRadius: 12, alignItems: 'center', justifyContent: 'center',
+    shadowColor: C.red, shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.25, shadowRadius: 6, elevation: 3,
   },
-  wicketBtnText: { color: '#fff', fontSize: 16, fontWeight: '800' },
+  wicketInner: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+  },
+  wicketBtnText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '900',
+    letterSpacing: 0.5,
+  },
 
   // Modals
   modalOverlay: {
-    flex: 1, backgroundColor: 'rgba(0,0,0,0.88)', justifyContent: 'flex-end',
+    flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.65)', justifyContent: 'flex-end',
   },
   modalBox: {
-    backgroundColor: '#111e16',
-    borderTopLeftRadius: 24, borderTopRightRadius: 24,
-    padding: 20, paddingBottom: 36,
+    backgroundColor: C.surface,
+    borderTopLeftRadius: 28, borderTopRightRadius: 28,
+    padding: 24, paddingBottom: 40,
     borderTopWidth: 1, borderTopColor: C.border,
   },
-  modalTitle:    { color: C.text,    fontSize: 18, fontWeight: '800', marginBottom: 4, textAlign: 'center' },
-  modalSubtitle: { color: C.textSub, fontSize: 13, textAlign: 'center', marginBottom: 10 },
+  modalTitle:    { color: C.text, fontSize: 19, fontWeight: '800', marginBottom: 4, textAlign: 'center' },
+  modalSubtitle: { color: C.textSub, fontSize: 13, textAlign: 'center', marginBottom: 12 },
   freeHitWarning: {
-    backgroundColor: '#2a2000', borderRadius: 10,
-    borderWidth: 1, borderColor: C.yellow,
+    backgroundColor: '#FEF3C7', borderRadius: 10,
+    borderWidth: 1, borderColor: '#FDE68A',
     paddingVertical: 8, paddingHorizontal: 12, marginBottom: 12,
     alignItems: 'center',
   },
-  freeHitWarningText: { color: C.yellow, fontSize: 12, fontWeight: '700' },
+  freeHitWarningText: { color: '#B45309', fontSize: 12, fontWeight: '800' },
   modalOption: {
-    paddingVertical: 14,
-    borderBottomWidth: 1, borderBottomColor: '#1a2e22',
+    paddingVertical: 15,
+    borderBottomWidth: 1, borderBottomColor: C.border,
   },
   modalOptionDisabled: { opacity: 0.35 },
-  modalOptionText:    { color: C.text,    fontSize: 16 },
+  modalOptionText:    { color: C.text, fontSize: 16, fontWeight: '600' },
   modalOptionTextDisabled: { color: C.textMuted },
-  modalOptionSub:     { color: C.textMuted, fontSize: 12, marginTop: 2 },
+  modalOptionSub:     { color: C.textSub, fontSize: 12, marginTop: 2 },
   modalCancel:        { paddingTop: 18, alignItems: 'center' },
-  modalCancelText:    { color: C.red, fontSize: 15, fontWeight: '700' },
+  modalCancelText:    { color: C.red, fontSize: 16, fontWeight: '800' },
   modalEmpty:         { color: C.textMuted, fontSize: 14, textAlign: 'center', paddingVertical: 20 },
+
+  // Rich Wicket Options List
+  wicketOptionsList: {
+    gap: 8, marginVertical: 4,
+  },
+  wicketOptionCard: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: '#F8FAF8',
+    borderRadius: 14, padding: 12,
+    borderWidth: 1, borderColor: C.border,
+  },
+  wicketIconBox: {
+    width: 44, height: 44, borderRadius: 12,
+    alignItems: 'center', justifyContent: 'center',
+    marginRight: 12, overflow: 'hidden',
+  },
+  wicketOptionImg: {
+    width: 38, height: 38,
+    borderRadius: 8,
+  },
+  wicketOptionInfo: { flex: 1 },
+  wicketOptionTitle: { color: C.text, fontSize: 15, fontWeight: '800' },
+  wicketOptionDesc:  { color: C.textSub, fontSize: 11, fontWeight: '500', marginTop: 1 },
 
   // ── Run Out UI Styles ──────────────────────────────────────────────────
   runOutCard: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: '#182a1f',
+    backgroundColor: '#F8FAF8',
     paddingVertical: 14,
     paddingHorizontal: 16,
-    borderRadius: 12,
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#1e3d28',
+    borderColor: C.border,
   },
   runOutPlayerName: {
-    color: '#ffffff',
+    color: C.text,
     fontSize: 16,
     fontWeight: '700',
     flex: 1,
     marginRight: 10,
   },
   strikerBadge: {
-    backgroundColor: '#1a3a1a',
+    backgroundColor: C.greenLight,
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#2e7d32',
+    borderColor: '#86EFAC',
   },
   strikerBadgeText: {
-    color: '#4CAF50',
+    color: C.greenDark,
     fontSize: 11,
     fontWeight: '800',
     letterSpacing: 0.5,
   },
   nonStrikerBadge: {
-    backgroundColor: '#2a1a0a',
+    backgroundColor: '#FEF3C7',
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#e65100',
+    borderColor: '#FDE68A',
   },
   nonStrikerBadgeText: {
-    color: '#FF9800',
+    color: '#B45309',
     fontSize: 11,
     fontWeight: '800',
     letterSpacing: 0.5,
@@ -1159,34 +1393,39 @@ const styles = StyleSheet.create({
     width: 60,
     height: 60,
     borderRadius: 30,
-    backgroundColor: '#182a1f',
+    backgroundColor: '#F8FAF8',
     borderWidth: 2,
-    borderColor: '#1e3d28',
+    borderColor: C.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
   runBeforeCircleActive: {
-    borderColor: '#00e676',
-    backgroundColor: '#1b5e20',
+    borderColor: C.green,
+    backgroundColor: C.greenLight,
   },
   runBeforeCircleText: {
-    color: '#ffffff',
+    color: C.text,
     fontSize: 22,
     fontWeight: '800',
   },
   runBeforeCircleTextActive: {
-    color: '#00e676',
+    color: C.greenDark,
   },
   confirmRunOutBtn: {
-    backgroundColor: '#1b5e20',
-    paddingVertical: 15,
-    borderRadius: 12,
+    backgroundColor: C.green,
+    paddingVertical: 16,
+    borderRadius: 14,
     alignItems: 'center',
     marginTop: 6,
+    shadowColor: C.green,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    elevation: 3,
   },
   confirmRunOutBtnText: {
     color: '#ffffff',
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '800',
   },
 });

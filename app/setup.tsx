@@ -32,8 +32,8 @@ export default function SetupScreen() {
   const [ballsPerOver, setBallsPerOver] = useState('6');
   const [inningsCount, setInningsCount] = useState<1 | 2>(2);
 
-  const [team1Players, setTeam1Players] = useState<string[]>(Array(11).fill(''));
-  const [team2Players, setTeam2Players] = useState<string[]>(Array(11).fill(''));
+  const [team1Players, setTeam1Players] = useState<string[]>(['', '']);
+  const [team2Players, setTeam2Players] = useState<string[]>(['', '']);
 
   const updatePlayer = (team: 'team1' | 'team2', index: number, value: string) => {
     if (team === 'team1') {
@@ -44,6 +44,26 @@ export default function SetupScreen() {
       const updated = [...team2Players];
       updated[index] = value;
       setTeam2Players(updated);
+    }
+  };
+
+  const addPlayerField = (team: 'team1' | 'team2') => {
+    if (team === 'team1') {
+      if (team1Players.length >= 15) return;
+      setTeam1Players(prev => [...prev, '']);
+    } else {
+      if (team2Players.length >= 15) return;
+      setTeam2Players(prev => [...prev, '']);
+    }
+  };
+
+  const removePlayerField = (team: 'team1' | 'team2', index: number) => {
+    if (team === 'team1') {
+      if (team1Players.length <= 2) return;
+      setTeam1Players(prev => prev.filter((_, i) => i !== index));
+    } else {
+      if (team2Players.length <= 2) return;
+      setTeam2Players(prev => prev.filter((_, i) => i !== index));
     }
   };
 
@@ -200,36 +220,82 @@ export default function SetupScreen() {
 
         {/* Team 1 Players */}
         <View style={styles.section}>
-          <Text style={styles.sectionLabel}>
-            {team1.trim() || 'TEAM 1'} PLAYERS
-          </Text>
+          <View style={styles.sectionHeaderRow}>
+            <Text style={styles.sectionLabel}>
+              {team1.trim() || 'TEAM 1'} PLAYERS ({team1Players.length})
+            </Text>
+            <Text style={styles.minPlayersHint}>Min 2 required</Text>
+          </View>
           {team1Players.map((player, index) => (
-            <TextInput
-              key={index}
-              style={styles.input}
-              placeholder={`Player ${index + 1}`}
-              placeholderTextColor={C.textMuted}
-              value={player}
-              onChangeText={val => updatePlayer('team1', index, val)}
-            />
+            <View key={index} style={styles.playerInputRow}>
+              <TextInput
+                style={[styles.input, styles.playerInputFlex]}
+                placeholder={`Player ${index + 1}${index < 2 ? ' *' : ''}`}
+                placeholderTextColor={C.textMuted}
+                value={player}
+                onChangeText={val => updatePlayer('team1', index, val)}
+              />
+              {team1Players.length > 2 && (
+                <TouchableOpacity
+                  style={styles.removePlayerBtn}
+                  onPress={() => removePlayerField('team1', index)}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Text style={styles.removePlayerText}>✕</Text>
+                </TouchableOpacity>
+              )}
+            </View>
           ))}
+          {team1Players.length < 15 && (
+            <TouchableOpacity
+              style={styles.addPlayerBtn}
+              onPress={() => addPlayerField('team1')}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.addPlayerIcon}>+</Text>
+              <Text style={styles.addPlayerText}>Add Player</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* Team 2 Players */}
         <View style={styles.section}>
-          <Text style={styles.sectionLabel}>
-            {team2.trim() || 'TEAM 2'} PLAYERS
-          </Text>
+          <View style={styles.sectionHeaderRow}>
+            <Text style={styles.sectionLabel}>
+              {team2.trim() || 'TEAM 2'} PLAYERS ({team2Players.length})
+            </Text>
+            <Text style={styles.minPlayersHint}>Min 2 required</Text>
+          </View>
           {team2Players.map((player, index) => (
-            <TextInput
-              key={index}
-              style={styles.input}
-              placeholder={`Player ${index + 1}`}
-              placeholderTextColor={C.textMuted}
-              value={player}
-              onChangeText={val => updatePlayer('team2', index, val)}
-            />
+            <View key={index} style={styles.playerInputRow}>
+              <TextInput
+                style={[styles.input, styles.playerInputFlex]}
+                placeholder={`Player ${index + 1}${index < 2 ? ' *' : ''}`}
+                placeholderTextColor={C.textMuted}
+                value={player}
+                onChangeText={val => updatePlayer('team2', index, val)}
+              />
+              {team2Players.length > 2 && (
+                <TouchableOpacity
+                  style={styles.removePlayerBtn}
+                  onPress={() => removePlayerField('team2', index)}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Text style={styles.removePlayerText}>✕</Text>
+                </TouchableOpacity>
+              )}
+            </View>
           ))}
+          {team2Players.length < 15 && (
+            <TouchableOpacity
+              style={styles.addPlayerBtn}
+              onPress={() => addPlayerField('team2')}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.addPlayerIcon}>+</Text>
+              <Text style={styles.addPlayerText}>Add Player</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* Start Button */}
@@ -320,6 +386,65 @@ const styles = StyleSheet.create({
   chipTextActive: {
     color: C.accent,
     fontWeight: '800',
+  },
+
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  minPlayersHint: {
+    color: C.textMuted,
+    fontSize: 11,
+    marginBottom: 12,
+  },
+  playerInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  playerInputFlex: {
+    flex: 1,
+  },
+  removePlayerBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    marginBottom: 10,
+    borderRadius: 10,
+    backgroundColor: '#2a1313',
+    borderWidth: 1,
+    borderColor: '#4d2020',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  removePlayerText: {
+    color: '#ff5252',
+    fontSize: 13,
+    fontWeight: 'bold',
+  },
+  addPlayerBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: C.border,
+    backgroundColor: C.surface,
+    marginTop: 4,
+  },
+  addPlayerIcon: {
+    color: C.accent,
+    fontSize: 17,
+    fontWeight: 'bold',
+  },
+  addPlayerText: {
+    color: C.accent,
+    fontSize: 13,
+    fontWeight: '700',
   },
 
   startBtn: {

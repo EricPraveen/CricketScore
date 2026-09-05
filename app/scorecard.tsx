@@ -29,6 +29,7 @@ export default function ScorecardScreen() {
   const { matchId } = useLocalSearchParams<{ matchId: string }>();
 
   const match   = getMatchById(Number(matchId));
+  const ballsPerOver = match?.balls_per_over ?? 6;
   const innings = getInningsByMatch(Number(matchId));
 
   // ── Result calculation ─────────────────────────────────────────────────────
@@ -69,7 +70,7 @@ export default function ScorecardScreen() {
       const blp = getPlayersByTeam(Number(matchId), inn.bowling_team);
       const runs = getTotalRuns(inn.id);
       const wkts = getWickets(inn.id);
-      const ovs  = getOversDisplay(inn.id);
+      const ovs  = getOversDisplay(inn.id, ballsPerOver);
 
       text += `INNINGS ${i + 1} - ${inn.batting_team}: ${runs}/${wkts} (${ovs} ov)\n`;
       text += 'BATTING:\n';
@@ -83,7 +84,7 @@ export default function ScorecardScreen() {
       blp.forEach(p => {
         const s = getBowlerStats(inn.id, p.id);
         if (s.balls_bowled > 0) {
-          const o = `${Math.floor(s.balls_bowled / 6)}.${s.balls_bowled % 6}`;
+          const o = `${Math.floor(s.balls_bowled / ballsPerOver)}.${s.balls_bowled % ballsPerOver}`;
           text += `${p.name}: ${o}-${s.runs_given}-${s.wickets}\n`;
         }
       });
@@ -102,7 +103,9 @@ export default function ScorecardScreen() {
         {/* Header */}
         <View style={styles.header}>
           <Text style={styles.headerText}>Scorecard</Text>
-          <Text style={styles.matchText}>{match?.team1} vs {match?.team2}</Text>
+          <Text style={styles.matchText}>
+            {match?.team1} vs {match?.team2}{ballsPerOver !== 6 ? ` • ${ballsPerOver}b/ov` : ''}
+          </Text>
         </View>
 
         {/* Result */}
@@ -118,7 +121,7 @@ export default function ScorecardScreen() {
           const blp = getPlayersByTeam(Number(matchId), inn.bowling_team);
           const runs = getTotalRuns(inn.id);
           const wkts = getWickets(inn.id);
-          const ovs  = getOversDisplay(inn.id);
+          const ovs  = getOversDisplay(inn.id, ballsPerOver);
 
           return (
             <View key={inn.id} style={styles.inningsSection}>
@@ -175,9 +178,9 @@ export default function ScorecardScreen() {
               {blp.map(p => {
                 const s   = getBowlerStats(inn.id, p.id);
                 if (s.balls_bowled === 0) return null;
-                const ovs = `${Math.floor(s.balls_bowled / 6)}.${s.balls_bowled % 6}`;
+                const ovs = `${Math.floor(s.balls_bowled / ballsPerOver)}.${s.balls_bowled % ballsPerOver}`;
                 const eco = s.balls_bowled > 0
-                  ? ((s.runs_given / s.balls_bowled) * 6).toFixed(1)
+                  ? ((s.runs_given / s.balls_bowled) * ballsPerOver).toFixed(1)
                   : '-';
                 return (
                   <View key={p.id} style={styles.tableRow}>

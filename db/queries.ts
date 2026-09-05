@@ -7,6 +7,7 @@ export interface Match {
   team1: string;
   team2: string;
   overs: number;
+  balls_per_over: number;
   innings_count: number;
   status: string;
   created_at: string;
@@ -65,11 +66,12 @@ export const createMatch = (
   team1: string,
   team2: string,
   overs: number,
-  inningsCount: number
+  inningsCount: number,
+  ballsPerOver: number = 6
 ): number => {
   const result = db.runSync(
-    `INSERT INTO matches (team1, team2, overs, innings_count) VALUES (?, ?, ?, ?)`,
-    [team1, team2, overs, inningsCount]
+    `INSERT INTO matches (team1, team2, overs, innings_count, balls_per_over) VALUES (?, ?, ?, ?, ?)`,
+    [team1, team2, overs, inningsCount, ballsPerOver]
   );
   return result.lastInsertRowId;
 };
@@ -257,9 +259,9 @@ export const getLegalBalls = (inningsId: number): number => {
 };
 
 /** Returns "X.Y" over display string (e.g. "3.4") */
-export const getOversDisplay = (inningsId: number): string => {
+export const getOversDisplay = (inningsId: number, ballsPerOver: number = 6): string => {
   const balls = getLegalBalls(inningsId);
-  return `${Math.floor(balls / 6)}.${balls % 6}`;
+  return `${Math.floor(balls / ballsPerOver)}.${balls % ballsPerOver}`;
 };
 
 /**

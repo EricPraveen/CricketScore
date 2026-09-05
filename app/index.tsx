@@ -130,7 +130,7 @@ export default function HomeScreen() {
                 </View>
               </View>
               <Text style={styles.matchInfo}>
-                {item.overs} Overs  •  {item.innings_count} Innings
+                {item.overs} Overs{item.balls_per_over && item.balls_per_over !== 6 ? ` (${item.balls_per_over}b/ov)` : ''}  •  {item.innings_count} Innings
               </Text>
               <Text style={styles.matchDate}>
                 {new Date(item.created_at).toLocaleDateString('en-IN', {

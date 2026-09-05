@@ -58,6 +58,7 @@ export default function ScoringScreen() {
   // Stable match ref — won't go stale on re-renders
   const matchRef = useRef(getMatchById(Number(matchId)));
   const match = matchRef.current;
+  const ballsPerOver = match?.balls_per_over ?? 6;
 
   // ── Score state (always recalculated from DB) ────────────────────────────
   const [totalRuns,  setTotalRuns]  = useState(0);
@@ -147,7 +148,7 @@ export default function ScoringScreen() {
     const wkts  = getWickets(id);
     const balls = getLegalBalls(id);
     const all   = getDeliveriesByInnings(id);
-    const overNo = Math.floor(balls / 6);
+    const overNo = Math.floor(balls / ballsPerOver);
     setTotalRuns(runs);
     setWickets(wkts);
     setLegalBalls(balls);
@@ -172,7 +173,7 @@ export default function ScoringScreen() {
       const runs = getTotalRuns(Number(inningsId));
       const wkts = getWickets(Number(inningsId));
       const balls = getLegalBalls(Number(inningsId));
-      const ovs  = `${Math.floor(balls / 6)}.${balls % 6}`;
+      const ovs  = `${Math.floor(balls / ballsPerOver)}.${balls % ballsPerOver}`;
       Alert.alert(
         '🏏 Innings Over!',
         `${battingTeam}: ${runs}/${wkts} (${ovs} ov)\n\n${bowlingTeam} needs ${runs + 1} to win`,
@@ -235,8 +236,8 @@ export default function ScoringScreen() {
     }
 
     const isLegal = extrasType === null || extrasType === 'bye' || extrasType === 'legbye';
-    const currentOverNo = Math.floor(legalBalls / 6);
-    const currentBallNo = legalBalls % 6;
+    const currentOverNo = Math.floor(legalBalls / ballsPerOver);
+    const currentBallNo = legalBalls % ballsPerOver;
 
     // Record delivery
     addDelivery(
@@ -269,14 +270,14 @@ export default function ScoringScreen() {
     // 2nd innings: check target
     if (checkTargetChased()) return;
 
-    if (isLegal && newBalls > 0 && newBalls % 6 === 0) {
+    if (isLegal && newBalls > 0 && newBalls % ballsPerOver === 0) {
       // ── End of over ──
-      if (newBalls / 6 >= totalOvers) {
+      if (newBalls / ballsPerOver >= totalOvers) {
         handleInningsEnd();
       } else {
         // Rotate strike (non-striker faces new over)
         rotateStrike();
-        Alert.alert('Over Complete!', `Over ${newBalls / 6} complete! Select new bowler.`);
+        Alert.alert('Over Complete!', `Over ${newBalls / ballsPerOver} complete! Select new bowler.`);
         setSelectBowlerModal(true);
       }
     } else if (isLegal) {
@@ -333,8 +334,8 @@ export default function ScoringScreen() {
     extrasValue: number = 0,
     isLegalDelivery: boolean = true
   ) => {
-    const currentOverNo = Math.floor(legalBalls / 6);
-    const currentBallNo = legalBalls % 6;
+    const currentOverNo = Math.floor(legalBalls / ballsPerOver);
+    const currentBallNo = legalBalls % ballsPerOver;
 
     // 1. Record delivery to DB
     addDelivery(
@@ -378,10 +379,10 @@ export default function ScoringScreen() {
     }
 
     // 6. Check if overs completed on this ball
-    const isOverComplete = isLegalDelivery && newBalls > 0 && newBalls % 6 === 0;
+    const isOverComplete = isLegalDelivery && newBalls > 0 && newBalls % ballsPerOver === 0;
 
     if (isOverComplete) {
-      if (newBalls / 6 >= totalOvers) {
+      if (newBalls / ballsPerOver >= totalOvers) {
         handleInningsEnd();
         return;
       }
@@ -397,7 +398,7 @@ export default function ScoringScreen() {
         setStriker(null);       // incoming batsman takes strike
       }
       setNeedNewBowler(true);
-      Alert.alert('Over Complete!', `Over ${newBalls / 6} complete! Select new bowler.`);
+      Alert.alert('Over Complete!', `Over ${newBalls / ballsPerOver} complete! Select new bowler.`);
       setSelectBatsmanModal(true);
     } else {
       // Mid-over dismissal:
@@ -486,13 +487,13 @@ export default function ScoringScreen() {
   // ── Computed display values ───────────────────────────────────────────────
 
   const totalOversNum = match?.overs ?? 0;
-  const oversDisplay  = `${Math.floor(legalBalls / 6)}.${legalBalls % 6}`;
+  const oversDisplay  = `${Math.floor(legalBalls / ballsPerOver)}.${legalBalls % ballsPerOver}`;
   const target        = firstInningsScore > 0 ? firstInningsScore + 1 : 0;
   const runsNeeded    = target > 0 ? Math.max(0, target - totalRuns) : 0;
-  const ballsLeft     = totalOversNum * 6 - legalBalls;
-  const runRate       = legalBalls > 0 ? ((totalRuns / legalBalls) * 6).toFixed(2) : '0.00';
+  const ballsLeft     = totalOversNum * ballsPerOver - legalBalls;
+  const runRate       = legalBalls > 0 ? ((totalRuns / legalBalls) * ballsPerOver).toFixed(2) : '0.00';
   const requiredRR    = ballsLeft > 0 && runsNeeded > 0
-    ? ((runsNeeded / ballsLeft) * 6).toFixed(2) : '0.00';
+    ? ((runsNeeded / ballsLeft) * ballsPerOver).toFixed(2) : '0.00';
   const targetPct     = target > 0 ? Math.min(totalRuns / target, 1) : 0;
 
   // Players available for batsman selection
@@ -540,7 +541,9 @@ export default function ScoringScreen() {
           <Text style={styles.scoreText}>{totalRuns}/{wickets}</Text>
 
           <View style={styles.scoreMetaRow}>
-            <Text style={styles.oversText}>{oversDisplay} / {totalOversNum} ov</Text>
+            <Text style={styles.oversText}>
+              {oversDisplay} / {totalOversNum} ov{ballsPerOver !== 6 ? ` (${ballsPerOver}b)` : ''}
+            </Text>
             <View style={styles.rrPill}>
               <Text style={styles.rrText}>CRR {runRate}</Text>
             </View>
@@ -629,7 +632,7 @@ export default function ScoringScreen() {
             </Text>
             {currentBowler && (() => {
               const bs  = getBowlerStats(Number(inningsId), currentBowler.id);
-              const ovs = `${Math.floor(bs.balls_bowled / 6)}.${bs.balls_bowled % 6}`;
+              const ovs = `${Math.floor(bs.balls_bowled / ballsPerOver)}.${bs.balls_bowled % ballsPerOver}`;
               return (
                 <Text style={styles.bowlerStats}>
                   {bs.wickets}-{bs.runs_given}  •  {ovs} ov
@@ -906,7 +909,7 @@ export default function ScoringScreen() {
             <ScrollView style={{ maxHeight: 420 }}>
               {bowlingPlayers.map(player => {
                 const bs  = getBowlerStats(Number(inningsId), player.id);
-                const ovs = `${Math.floor(bs.balls_bowled / 6)}.${bs.balls_bowled % 6}`;
+                const ovs = `${Math.floor(bs.balls_bowled / ballsPerOver)}.${bs.balls_bowled % ballsPerOver}`;
                 return (
                   <TouchableOpacity
                     key={player.id}

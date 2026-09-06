@@ -8,9 +8,10 @@ import {
   Easing,
   Image,
   Modal,
-  SafeAreaView, StyleSheet,
+  StyleSheet,
   Text, TouchableOpacity, View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { createInnings, getMatchById } from '../db/queries';
 import { CricketColors as C } from '../constants/theme';
 

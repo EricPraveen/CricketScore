@@ -93,4 +93,11 @@ export const initDB = (): void => {
   }
 };
 
+// Ensure database tables are created immediately upon module load
+try {
+  initDB();
+} catch (e) {
+  console.error('Error initializing database:', e);
+}
+
 export default db;

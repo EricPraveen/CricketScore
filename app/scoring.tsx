@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert, Image, Modal,
   SafeAreaView, ScrollView,
@@ -66,9 +66,6 @@ const WICKET_OPTIONS = [
   },
 ] as const;
 
-type WicketType = typeof WICKET_OPTIONS[number]['type'];
-const WICKET_TYPES = WICKET_OPTIONS.map(w => w.type);
-
 // ─── Component ────────────────────────────────────────────────────────────────
 export default function ScoringScreen() {
   const router = useRouter();
@@ -76,9 +73,8 @@ export default function ScoringScreen() {
     matchId: string; inningsId: string; battingTeam: string; bowlingTeam: string;
   }>();
 
-  // Stable match ref — won't go stale on re-renders
-  const matchRef = useRef(getMatchById(Number(matchId)));
-  const match = matchRef.current;
+  // Stable match info
+  const match = useMemo(() => getMatchById(Number(matchId)), [matchId]);
   const ballsPerOver = match?.balls_per_over ?? 6;
 
   // ── Score state (always recalculated from DB) ────────────────────────────
@@ -87,9 +83,28 @@ export default function ScoringScreen() {
   const [legalBalls, setLegalBalls] = useState(0);
   const [currentOver, setCurrentOver] = useState<Delivery[]>([]);
 
+  // ── Helpers ───────────────────────────────────────────────────────────────
+
+  const refreshScore = useCallback(() => {
+    const id = Number(inningsId);
+    const runs  = getTotalRuns(id);
+    const wkts  = getWickets(id);
+    const balls = getLegalBalls(id);
+    const all   = getDeliveriesByInnings(id);
+    const overNo = Math.floor(balls / ballsPerOver);
+    setTotalRuns(runs);
+    setWickets(wkts);
+    setLegalBalls(balls);
+    setCurrentOver(all.filter(d => d.over_no === overNo));
+  }, [inningsId, ballsPerOver]);
+
   // ── Player lists ─────────────────────────────────────────────────────────
-  const [battingPlayers, setBattingPlayers] = useState<Player[]>([]);
-  const [bowlingPlayers, setBowlingPlayers] = useState<Player[]>([]);
+  const [battingPlayers] = useState<Player[]>(() =>
+    getPlayersByTeam(Number(matchId), battingTeam)
+  );
+  const [bowlingPlayers] = useState<Player[]>(() =>
+    getPlayersByTeam(Number(matchId), bowlingTeam)
+  );
   const [dismissedIds,   setDismissedIds]   = useState<number[]>([]);
 
   // ── On-field players (transient UI state) ────────────────────────────────
@@ -99,7 +114,10 @@ export default function ScoringScreen() {
 
   // ── Game rules state ─────────────────────────────────────────────────────
   const [isFreeHit,        setIsFreeHit]        = useState(false);
-  const [firstInningsScore, setFirstInningsScore] = useState<number | null>(null);
+  const [firstInningsScore] = useState<number | null>(() => {
+    const allInnings = getInningsByMatch(Number(matchId));
+    return allInnings.length >= 2 ? getTotalRuns(allInnings[0].id) : null;
+  });
 
   // ── Celebration Overlay State ────────────────────────────────────────────
   const [celebration, setCelebration] = useState<'four' | 'six' | 'wicket' | null>(null);
@@ -118,19 +136,6 @@ export default function ScoringScreen() {
 
   // ── Init ─────────────────────────────────────────────────────────────────
   useEffect(() => {
-    const batting = getPlayersByTeam(Number(matchId), battingTeam);
-    const bowling = getPlayersByTeam(Number(matchId), bowlingTeam);
-    setBattingPlayers(batting);
-    setBowlingPlayers(bowling);
-
-    // 2nd innings: capture target from 1st innings (even if 1st innings was 0 runs!)
-    const allInnings = getInningsByMatch(Number(matchId));
-    if (allInnings.length >= 2) {
-      setFirstInningsScore(getTotalRuns(allInnings[0].id));
-    } else {
-      setFirstInningsScore(null);
-    }
-
     // Try to restore state from existing deliveries
     const existing = getDeliveriesByInnings(Number(inningsId));
 
@@ -138,9 +143,9 @@ export default function ScoringScreen() {
       const last = existing[existing.length - 1];
 
       // Restore on-field players from last delivery
-      setStriker(batting.find(p => p.id === last.batsman_id) ?? null);
-      setNonStriker(batting.find(p => p.id === last.non_striker_id) ?? null);
-      setCurrentBowler(bowling.find(p => p.id === last.bowler_id) ?? null);
+      setStriker(battingPlayers.find(p => p.id === last.batsman_id) ?? null);
+      setNonStriker(battingPlayers.find(p => p.id === last.non_striker_id) ?? null);
+      setCurrentBowler(bowlingPlayers.find(p => p.id === last.bowler_id) ?? null);
 
       // Restore dismissed list
       const dIds = existing
@@ -162,22 +167,7 @@ export default function ScoringScreen() {
       setNeedNewBowler(false);
       setSelectBatsmanModal(true);
     }
-  }, [matchId, inningsId, battingTeam, bowlingTeam]);
-
-  // ── Helpers ───────────────────────────────────────────────────────────────
-
-  const refreshScore = () => {
-    const id = Number(inningsId);
-    const runs  = getTotalRuns(id);
-    const wkts  = getWickets(id);
-    const balls = getLegalBalls(id);
-    const all   = getDeliveriesByInnings(id);
-    const overNo = Math.floor(balls / ballsPerOver);
-    setTotalRuns(runs);
-    setWickets(wkts);
-    setLegalBalls(balls);
-    setCurrentOver(all.filter(d => d.over_no === overNo));
-  };
+  }, [inningsId, battingPlayers, bowlingPlayers, refreshScore]);
 
   const rotateStrike = () => {
     const newStriker = nonStriker;

@@ -201,6 +201,14 @@ export default function ScorecardScreen() {
         })}
 
         {/* Actions */}
+        <TouchableOpacity
+          style={styles.rematchBtn}
+          onPress={() => router.push(`/setup?rematchMatchId=${matchId}` as any)}
+          activeOpacity={0.85}
+        >
+          <Text style={styles.rematchBtnText}>🔄 Rematch / Play Again</Text>
+        </TouchableOpacity>
+
         <TouchableOpacity style={styles.shareBtn} onPress={handleShare} activeOpacity={0.85}>
           <Text style={styles.shareBtnText}>📤 Share Scorecard</Text>
         </TouchableOpacity>
@@ -285,13 +293,32 @@ const styles = StyleSheet.create({
   highlight: { color: C.greenDark, fontWeight: '800' },
   highlightWickets: { color: C.red, fontWeight: '900' },
 
-  shareBtn: {
-    backgroundColor: C.green, marginHorizontal: 16, marginBottom: 10,
-    padding: 18, borderRadius: 14, alignItems: 'center',
-    shadowColor: C.green, shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25, shadowRadius: 8, elevation: 4,
+  rematchBtn: {
+    backgroundColor: C.green,
+    marginHorizontal: 16,
+    marginBottom: 12,
+    padding: 18,
+    borderRadius: 14,
+    alignItems: 'center',
+    shadowColor: C.green,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 4,
   },
-  shareBtnText: { color: '#ffffff', fontSize: 16, fontWeight: '800' },
+  rematchBtnText: { color: '#ffffff', fontSize: 16, fontWeight: '800' },
+
+  shareBtn: {
+    backgroundColor: C.cardAlt,
+    marginHorizontal: 16,
+    marginBottom: 10,
+    padding: 16,
+    borderRadius: 14,
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: C.green,
+  },
+  shareBtnText: { color: C.greenDark, fontSize: 15, fontWeight: '800' },
 
   homeBtn: {
     backgroundColor: C.surface, marginHorizontal: 16,

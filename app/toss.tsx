@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import {
   Alert,
   Animated,
@@ -28,8 +28,8 @@ export default function TossScreen() {
   const [flipResult,       setFlipResult]       = useState<string | null>(null);
   const [displayedSide,    setDisplayedSide]    = useState<string>(match?.team1 ?? 'Coin');
 
-  const spinValue = useRef(new Animated.Value(0)).current;
-  const coinScale = useRef(new Animated.Value(1)).current;
+  const [spinValue] = useState(() => new Animated.Value(0));
+  const [coinScale] = useState(() => new Animated.Value(1));
 
   const handleFlipCoin = () => {
     if (isFlipping || !match) return;

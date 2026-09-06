@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
 import {
   Alert,
@@ -8,21 +8,42 @@ import {
   Text, TextInput, TouchableOpacity,
   View,
 } from 'react-native';
-import { addPlayer, createMatch } from '../db/queries';
+import { addPlayer, createMatch, getMatchById, getPlayersByMatch } from '../db/queries';
 import { CricketColors as C } from '../constants/theme';
 
 export default function SetupScreen() {
   const router = useRouter();
+  const { rematchMatchId } = useLocalSearchParams<{ rematchMatchId?: string }>();
 
-  const [team1, setTeam1]         = useState('');
-  const [team2, setTeam2]         = useState('');
-  const [overs, setOvers]         = useState('');
-  const [matchType, setMatchType] = useState<'ordinary' | 'custom'>('ordinary');
-  const [ballsPerOver, setBallsPerOver] = useState('6');
-  const [inningsCount, setInningsCount] = useState<1 | 2>(2);
+  // Pre-load previous match details if in Rematch mode
+  const oldMatch = rematchMatchId ? getMatchById(Number(rematchMatchId)) : null;
+  const initialPlayers = oldMatch ? getPlayersByMatch(oldMatch.id) : [];
+  const initialT1 = oldMatch
+    ? initialPlayers.filter(p => p.team.trim().toLowerCase() === oldMatch.team1.trim().toLowerCase()).map(p => p.name)
+    : [];
+  const initialT2 = oldMatch
+    ? initialPlayers.filter(p => p.team.trim().toLowerCase() === oldMatch.team2.trim().toLowerCase()).map(p => p.name)
+    : [];
 
-  const [team1Players, setTeam1Players] = useState<string[]>(['', '']);
-  const [team2Players, setTeam2Players] = useState<string[]>(['', '']);
+  const [team1, setTeam1]         = useState(oldMatch?.team1 ?? '');
+  const [team2, setTeam2]         = useState(oldMatch?.team2 ?? '');
+  const [overs, setOvers]         = useState(oldMatch?.overs ? oldMatch.overs.toString() : '');
+  const [matchType, setMatchType] = useState<'ordinary' | 'custom'>(
+    oldMatch && oldMatch.balls_per_over && oldMatch.balls_per_over !== 6 ? 'custom' : 'ordinary'
+  );
+  const [ballsPerOver, setBallsPerOver] = useState(
+    oldMatch?.balls_per_over ? oldMatch.balls_per_over.toString() : '6'
+  );
+  const [inningsCount, setInningsCount] = useState<1 | 2>(
+    oldMatch?.innings_count === 1 ? 1 : 2
+  );
+
+  const [team1Players, setTeam1Players] = useState<string[]>(
+    initialT1.length >= 2 ? initialT1 : initialT1.length === 1 ? [initialT1[0], ''] : ['', '']
+  );
+  const [team2Players, setTeam2Players] = useState<string[]>(
+    initialT2.length >= 2 ? initialT2 : initialT2.length === 1 ? [initialT2[0], ''] : ['', '']
+  );
 
   const updatePlayer = (team: 'team1' | 'team2', index: number, value: string) => {
     if (team === 'team1') {
@@ -104,10 +125,28 @@ export default function SetupScreen() {
             <Ionicons name="arrow-back" size={22} color={C.text} />
           </TouchableOpacity>
           <View style={styles.headerTextCol}>
-            <Text style={styles.headerTitle}>Match Setup</Text>
-            <Text style={styles.headerSub}>Configure your teams & rules</Text>
+            <Text style={styles.headerTitle}>
+              {rematchMatchId ? '🔄 Rematch Setup' : 'Match Setup'}
+            </Text>
+            <Text style={styles.headerSub}>
+              {rematchMatchId ? 'Teams & players pre-filled from match' : 'Configure your teams & rules'}
+            </Text>
           </View>
         </View>
+
+        {Boolean(rematchMatchId) && (
+          <View style={styles.rematchBanner}>
+            <View style={styles.rematchBannerIconBox}>
+              <Ionicons name="repeat" size={18} color={C.green} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.rematchBannerTitle}>Rematch Details Loaded</Text>
+              <Text style={styles.rematchBannerDesc}>
+                All settings & players pre-filled! Make any tweaks if needed, then proceed to Toss.
+              </Text>
+            </View>
+          </View>
+        )}
 
         {/* Match Settings */}
         <View style={styles.section}>
@@ -471,4 +510,37 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   startBtnText: { color: '#FFFFFF', fontSize: 17, fontWeight: '800' },
+
+  rematchBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: C.greenLight,
+    borderWidth: 1,
+    borderColor: '#86EFAC',
+    borderRadius: 14,
+    marginHorizontal: 16,
+    marginTop: 16,
+    marginBottom: 6,
+    padding: 14,
+    gap: 12,
+  },
+  rematchBannerIconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#DCFCE7',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  rematchBannerTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: C.greenDark,
+    marginBottom: 2,
+  },
+  rematchBannerDesc: {
+    fontSize: 12,
+    color: '#15803D',
+    lineHeight: 17,
+  },
 });

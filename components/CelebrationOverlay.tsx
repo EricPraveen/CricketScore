@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Animated,
   Modal,
@@ -20,10 +20,13 @@ export default function CelebrationOverlay({
   type,
   onDismiss,
 }: CelebrationOverlayProps) {
-  const scaleAnim    = useRef(new Animated.Value(0.3)).current;
-  const opacityAnim  = useRef(new Animated.Value(0)).current;
-  const onDismissRef = useRef(onDismiss);
-  onDismissRef.current = onDismiss;
+  const [scaleAnim]   = useState(() => new Animated.Value(0.3));
+  const [opacityAnim] = useState(() => new Animated.Value(0));
+  const onDismissRef  = useRef(onDismiss);
+
+  useEffect(() => {
+    onDismissRef.current = onDismiss;
+  }, [onDismiss]);
 
   useEffect(() => {
     if (visible && type) {

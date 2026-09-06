@@ -1,12 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import {
   Alert, FlatList,
   SafeAreaView, StyleSheet,
   Text, TouchableOpacity, View,
 } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
 import {
   Match,
   deleteMatch, getAllMatches,
@@ -32,11 +31,30 @@ export default function HomeScreen() {
       [
         { text: 'Cancel', style: 'cancel' },
         {
+          text: '🔄 Rematch (Play Again)',
+          onPress: () => {
+            router.push(`/setup?rematchMatchId=${item.id}` as any);
+          },
+        },
+        {
           text: '🗑 Delete Match',
           style: 'destructive',
           onPress: () => {
-            deleteMatch(item.id);
-            setMatches(getAllMatches());
+            Alert.alert(
+              'Delete Match',
+              `Are you sure you want to delete ${item.team1} vs ${item.team2}? All data will be lost.`,
+              [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                  text: 'Delete',
+                  style: 'destructive',
+                  onPress: () => {
+                    deleteMatch(item.id);
+                    setMatches(getAllMatches());
+                  },
+                },
+              ]
+            );
           },
         },
       ]

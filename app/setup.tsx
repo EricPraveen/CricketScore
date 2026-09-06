@@ -3,11 +3,12 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
 import {
   Alert,
-  SafeAreaView, ScrollView,
+  ScrollView,
   StyleSheet,
   Text, TextInput, TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { addPlayer, createMatch, getMatchById, getPlayersByMatch } from '../db/queries';
 import { CricketColors as C } from '../constants/theme';
 

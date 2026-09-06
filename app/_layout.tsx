@@ -1,5 +1,6 @@
 import { Stack } from 'expo-router';
 import { useEffect } from 'react';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { initDB } from '../db/database';
 
 export default function RootLayout() {
@@ -8,12 +9,14 @@ export default function RootLayout() {
   }, []);
 
   return (
-    <Stack screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="index" />
-      <Stack.Screen name="setup" />
-      <Stack.Screen name="toss" />
-      <Stack.Screen name="scoring" />
-      <Stack.Screen name="scorecard" />
-    </Stack>
+    <SafeAreaProvider>
+      <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="index" />
+        <Stack.Screen name="setup" />
+        <Stack.Screen name="toss" />
+        <Stack.Screen name="scoring" />
+        <Stack.Screen name="scorecard" />
+      </Stack>
+    </SafeAreaProvider>
   );
 }

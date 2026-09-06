@@ -3,11 +3,12 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert, Image, Modal,
-  SafeAreaView, ScrollView,
+  ScrollView,
   StyleSheet,
   Text, TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import CelebrationOverlay from '../components/CelebrationOverlay';
 import { CricketColors as C } from '../constants/theme';
 import {
@@ -138,6 +139,10 @@ export default function ScoringScreen() {
   const [byesModalVisible, setByesModalVisible] = useState(false);
   const [byesType, setByesType]                 = useState<'bye' | 'legbye'>('bye');
   const [byesRuns, setByesRuns]                 = useState(1);
+
+  // ── Wide Modal State ──────────────────────────────────────────────────────
+  const [wideModalVisible, setWideModalVisible] = useState(false);
+  const [wideRuns, setWideRuns]                 = useState(1);
 
   // ── Init ─────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -325,8 +330,29 @@ export default function ScoringScreen() {
       if (rotateRuns % 2 !== 0) {
         rotateStrike();
       }
+    } else if (extrasType === 'wide') {
+      // Wide is illegal, but if batsmen ran odd runs (runsRun = extrasValue - 1)
+      const runsRun = extrasValue - 1;
+      if (runsRun > 0 && runsRun % 2 !== 0) {
+        rotateStrike();
+      }
     }
-    // Wide / No Ball → no strike rotation
+    // No Ball without byes → no strike rotation
+  };
+
+  // ── Wide handlers ────────────────────────────────────────────────────────
+  const openWideModal = () => {
+    if (!striker || !nonStriker || !currentBowler) {
+      Alert.alert('Select Players', 'Please select batsmen and bowler first.');
+      return;
+    }
+    setWideRuns(1);
+    setWideModalVisible(true);
+  };
+
+  const confirmWide = () => {
+    setWideModalVisible(false);
+    handleRun(0, 'wide', wideRuns);
   };
 
   // ── Byes handlers ────────────────────────────────────────────────────────
@@ -520,7 +546,7 @@ export default function ScoringScreen() {
 
   const getBallLabel = (d: Delivery): string => {
     if (d.is_wicket)                return 'W';
-    if (d.extras_type === 'wide')   return 'Wd';
+    if (d.extras_type === 'wide')   return d.extras_value > 1 ? `${d.extras_value}Wd` : 'Wd';
     if (d.extras_type === 'noball') return 'Nb';
     if (d.extras_type === 'bye') {
       const r = d.batsman_runs > 0 ? d.batsman_runs : d.extras_value;
@@ -842,7 +868,7 @@ export default function ScoringScreen() {
         <View style={styles.extrasRow}>
           <TouchableOpacity
             style={styles.extraBtn}
-            onPress={() => handleRun(0, 'wide', 1)}
+            onPress={openWideModal}
             activeOpacity={0.75}
           >
             <Text style={styles.extraBtnText}>Wide</Text>
@@ -1217,6 +1243,103 @@ export default function ScoringScreen() {
               >
                 <Text style={styles.byesConfirmText}>
                   Confirm {byesRuns} {byesRuns === 1 ? 'Run' : 'Runs'} →
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ─────── WIDE MODAL ─────── */}
+      <Modal visible={wideModalVisible} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalBox}>
+            <View style={styles.byesHeaderRow}>
+              <Text style={styles.modalTitle}>↔️ Wide Ball Runs</Text>
+              <Text style={styles.modalSubtitle}>
+                Ball does not count in over. Set total runs:
+              </Text>
+            </View>
+
+            {/* Counter Controls */}
+            <View style={styles.byesCounterRow}>
+              <TouchableOpacity
+                style={[styles.byesCounterBtn, wideRuns <= 1 && styles.byesCounterBtnDisabled]}
+                onPress={() => setWideRuns(prev => Math.max(1, prev - 1))}
+                disabled={wideRuns <= 1}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="remove" size={24} color={wideRuns <= 1 ? C.textMuted : C.text} />
+              </TouchableOpacity>
+
+              <View style={styles.byesDisplayBox}>
+                <Text style={styles.byesCountText}>{wideRuns}</Text>
+                <Text style={styles.byesCountUnit}>{wideRuns === 1 ? 'RUN' : 'RUNS'}</Text>
+              </View>
+
+              <TouchableOpacity
+                style={styles.byesCounterBtn}
+                onPress={() => setWideRuns(prev => prev + 1)}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="add" size={24} color={C.greenDark} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Strike Rotation Indicator Note */}
+            <View style={styles.byesNoteBox}>
+              <Ionicons
+                name={(wideRuns - 1) > 0 && (wideRuns - 1) % 2 !== 0 ? "swap-horizontal" : "checkmark-circle-outline"}
+                size={16}
+                color={(wideRuns - 1) > 0 && (wideRuns - 1) % 2 !== 0 ? C.greenDark : C.textSub}
+              />
+              <Text style={styles.byesNoteText}>
+                {wideRuns === 1
+                  ? 'Normal Wide — Strike stays with current batsman'
+                  : (wideRuns - 1) % 2 !== 0
+                  ? `Wide + ${wideRuns - 1} run — Strike will rotate ⇄`
+                  : `Wide + ${wideRuns - 1} runs — Strike stays with current batsman`}
+              </Text>
+            </View>
+
+            {/* Quick Presets */}
+            <View style={styles.byesPresetsRow}>
+              {[
+                { label: '1 (Wd)', val: 1 },
+                { label: '2 (+1)', val: 2 },
+                { label: '3 (+2)', val: 3 },
+                { label: '5 (+4)', val: 5 },
+              ].map(({ label, val }) => (
+                <TouchableOpacity
+                  key={val}
+                  style={[styles.byesPresetBtn, wideRuns === val && styles.byesPresetBtnActive]}
+                  onPress={() => setWideRuns(val)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[styles.byesPresetText, wideRuns === val && styles.byesPresetTextActive]}>
+                    {label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {/* Action Buttons */}
+            <View style={styles.byesActionsRow}>
+              <TouchableOpacity
+                style={styles.byesCancelBtn}
+                onPress={() => setWideModalVisible(false)}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.byesCancelText}>Cancel</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.byesConfirmBtn}
+                onPress={confirmWide}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.byesConfirmText}>
+                  Confirm {wideRuns} {wideRuns === 1 ? 'Run' : 'Runs'} →
                 </Text>
               </TouchableOpacity>
             </View>

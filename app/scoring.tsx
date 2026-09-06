@@ -675,42 +675,83 @@ export default function ScoringScreen() {
           </ScrollView>
         </View>
 
-        {/* ── Batsmen ── */}
+        {/* ── Batsmen Header with Manual Strike Swap ── */}
+        <View style={styles.batsmenHeaderRow}>
+          <Text style={styles.sectionSmallLabel}>BATSMEN</Text>
+          <TouchableOpacity
+            style={styles.swapStrikeBtn}
+            onPress={rotateStrike}
+            activeOpacity={0.75}
+          >
+            <Ionicons name="swap-horizontal" size={13} color={C.greenDark} />
+            <Text style={styles.swapStrikeText}>Swap Strike</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* ── Batsmen Cards (Stable order by player.id so cards don't flip-flop) ── */}
         <View style={styles.playersRow}>
-          {[
-            { player: striker,    isStriker: true  },
-            { player: nonStriker, isStriker: false },
-          ].map(({ player, isStriker }) => {
-            const stats = player
-              ? getBatsmanStats(Number(inningsId), player.id)
-              : null;
-            const sr = stats && stats.balls_faced > 0
-              ? ((stats.runs / stats.balls_faced) * 100).toFixed(0)
-              : '0';
-            return (
-              <View
-                key={isStriker ? 'st' : 'ns'}
-                style={[styles.playerCard, isStriker && styles.strikerCard]}
-              >
-                <Text style={styles.playerNameLabel}>
-                  {isStriker ? '🏏 ' : ''}{player?.name ?? '—'}{isStriker && player ? ' *' : ''}
-                </Text>
-                {stats ? (
-                  <>
-                    <Text style={styles.playerScore}>
-                      {stats.runs}
-                      <Text style={styles.playerBalls}> ({stats.balls_faced})</Text>
+          {(() => {
+            const list = (!striker && !nonStriker)
+              ? []
+              : (!striker)
+              ? [{ player: nonStriker, isStriker: false }]
+              : (!nonStriker)
+              ? [{ player: striker, isStriker: true }]
+              : striker.id < nonStriker.id
+              ? [{ player: striker, isStriker: true }, { player: nonStriker, isStriker: false }]
+              : [{ player: nonStriker, isStriker: false }, { player: striker, isStriker: true }];
+
+            return list.map(({ player, isStriker }) => {
+              const stats = player
+                ? getBatsmanStats(Number(inningsId), player.id)
+                : null;
+              const sr = stats && stats.balls_faced > 0
+                ? ((stats.runs / stats.balls_faced) * 100).toFixed(0)
+                : '0';
+              return (
+                <TouchableOpacity
+                  key={player?.id ?? (isStriker ? 'st' : 'ns')}
+                  style={[styles.playerCard, isStriker && styles.strikerCard]}
+                  onPress={() => {
+                    if (!isStriker) {
+                      rotateStrike();
+                    }
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <View style={styles.playerNameRow}>
+                    <Text
+                      style={[styles.playerNameLabel, isStriker && styles.strikerNameLabel]}
+                      numberOfLines={1}
+                    >
+                      {isStriker ? '🏏 ' : ''}{player?.name ?? '—'}{isStriker && player ? ' *' : ''}
                     </Text>
-                    <Text style={styles.playerMeta}>
-                      SR {sr}  •  4s {stats.fours}  •  6s {stats.sixes}
-                    </Text>
-                  </>
-                ) : (
-                  <Text style={styles.playerMeta}>—</Text>
-                )}
-              </View>
-            );
-          })}
+                    {isStriker && (
+                      <View style={styles.onStrikeBadge}>
+                        <Text style={styles.onStrikeBadgeText}>STRIKE</Text>
+                      </View>
+                    )}
+                  </View>
+                  {stats ? (
+                    <>
+                      <Text style={styles.playerScore}>
+                        {stats.runs}
+                        <Text style={styles.playerBalls}> ({stats.balls_faced})</Text>
+                      </Text>
+                      <Text style={styles.playerMeta}>
+                        SR {sr}  •  4s {stats.fours}  •  6s {stats.sixes}
+                      </Text>
+                    </>
+                  ) : (
+                    <Text style={styles.playerMeta}>—</Text>
+                  )}
+                  {!isStriker && (
+                    <Text style={styles.tapToStrikeHint}>Tap to switch strike</Text>
+                  )}
+                </TouchableOpacity>
+              );
+            });
+          })()}
         </View>
 
         {/* ── Bowler ── */}
@@ -1181,6 +1222,36 @@ const styles = StyleSheet.create({
   ballText: { fontSize: 10, fontWeight: '800' },
 
   // Batsmen
+  batsmenHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginHorizontal: 12,
+    marginTop: 6,
+    marginBottom: 4,
+  },
+  sectionSmallLabel: {
+    color: C.textSub,
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.8,
+  },
+  swapStrikeBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: C.greenLight,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#86EFAC',
+  },
+  swapStrikeText: {
+    color: C.greenDark,
+    fontSize: 10,
+    fontWeight: '700',
+  },
   playersRow:  { flexDirection: 'row', marginHorizontal: 10, gap: 8, marginBottom: 8 },
   playerCard: {
     flex: 1, backgroundColor: C.surface,
@@ -1188,10 +1259,24 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: C.border,
   },
   strikerCard: { borderColor: C.green, backgroundColor: C.greenLight },
-  playerNameLabel: { color: C.text, fontSize: 12, fontWeight: '800', marginBottom: 2 },
+  playerNameRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 },
+  playerNameLabel: { color: C.text, fontSize: 12, fontWeight: '800', flex: 1, marginRight: 4 },
+  strikerNameLabel: { color: C.greenDark },
+  onStrikeBadge: {
+    backgroundColor: C.green,
+    paddingHorizontal: 5,
+    paddingVertical: 1.5,
+    borderRadius: 4,
+  },
+  onStrikeBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 8,
+    fontWeight: '900',
+  },
   playerScore:     { color: C.text, fontSize: 20, fontWeight: '900' },
   playerBalls:     { fontSize: 12, fontWeight: '500', color: C.textSub },
   playerMeta:      { color: C.textSub, fontSize: 10, fontWeight: '600', marginTop: 2 },
+  tapToStrikeHint: { color: C.textMuted, fontSize: 9, marginTop: 4, fontWeight: '600' },
 
   // Bowler
   bowlerRow: {

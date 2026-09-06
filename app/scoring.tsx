@@ -15,6 +15,7 @@ import {
   Delivery, Player,
   addDelivery,
   createInnings,
+  deleteInnings,
   getBatsmanStats, getBowlerStats,
   getDeliveriesByInnings,
   getInningsByMatch,
@@ -197,6 +198,74 @@ export default function ScoringScreen() {
     );
   };
 
+  // ── performUndo ───────────────────────────────────────────────────────────
+  const performUndo = () => {
+    const toUndo = getLastDelivery(Number(inningsId));
+    if (!toUndo) {
+      // Check if innings 2 has 0 deliveries and scorer wants to return to 1st innings
+      const allInnings = getInningsByMatch(Number(matchId));
+      if (allInnings.length > 1 && allInnings[allInnings.length - 1].id === Number(inningsId)) {
+        Alert.alert(
+          'Return to 1st Innings?',
+          'No deliveries have been bowled in 2nd innings yet. Do you want to return to 1st innings to edit or undo?',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Return to 1st Innings',
+              style: 'destructive',
+              onPress: () => {
+                deleteInnings(Number(inningsId));
+                updateMatchStatus(Number(matchId), 'live');
+                const inn1 = allInnings[0];
+                router.replace(
+                  `/scoring?matchId=${matchId}&inningsId=${inn1.id}&battingTeam=${inn1.batting_team}&bowlingTeam=${inn1.bowling_team}` as any
+                );
+              },
+            },
+          ]
+        );
+      } else {
+        Alert.alert('No Deliveries', 'There are no balls to undo in this innings.');
+      }
+      return;
+    }
+
+    undoLastDelivery(Number(inningsId));
+    // Ensure match is marked live
+    updateMatchStatus(Number(matchId), 'live');
+    refreshScore();
+
+    // Restore game state from new last delivery
+    const newLast = getLastDelivery(Number(inningsId));
+
+    if (!newLast) {
+      // No deliveries left — back to opener selection
+      setStriker(null);
+      setNonStriker(null);
+      setCurrentBowler(null);
+      setDismissedIds([]);
+      setIsFreeHit(false);
+      setNeedNewBowler(false);
+      setSelectBatsmanModal(true);
+    } else {
+      // Restore on-field players
+      setStriker(battingPlayers.find(p => p.id === newLast.batsman_id) ?? null);
+      setNonStriker(battingPlayers.find(p => p.id === newLast.non_striker_id) ?? null);
+      setCurrentBowler(bowlingPlayers.find(p => p.id === newLast.bowler_id) ?? null);
+
+      // Rebuild dismissed list from remaining deliveries
+      const remaining = getDeliveriesByInnings(Number(inningsId));
+      const dIds = remaining
+        .filter(d => d.is_wicket && d.dismissed_player_id !== null)
+        .map(d => d.dismissed_player_id as number);
+      setDismissedIds(dIds);
+
+      // Free hit: active if the new last delivery was a no-ball
+      setIsFreeHit(newLast.extras_type === 'noball');
+      setNeedNewBowler(false);
+    }
+  };
+
   // ── Innings / match end ──────────────────────────────────────────────────
 
   const handleInningsEnd = () => {
@@ -212,24 +281,71 @@ export default function ScoringScreen() {
       Alert.alert(
         '🏏 Innings Over!',
         `${battingTeam}: ${runs}/${wkts} (${ovs} ov)\n\n${bowlingTeam} needs ${runs + 1} to win`,
-        [{
-          text: 'Start 2nd Innings →',
-          onPress: () => {
-            const newId = createInnings(
-              Number(matchId), 2,
-              bowlingTeam,   // now bats
-              battingTeam    // now bowls
-            );
-            router.replace(
-              `/scoring?matchId=${matchId}&inningsId=${newId}&battingTeam=${bowlingTeam}&bowlingTeam=${battingTeam}` as any
-            );
+        [
+          {
+            text: '↩ Undo Last Ball',
+            style: 'destructive',
+            onPress: () => {
+              performUndo();
+            },
           },
-        }]
+          {
+            text: 'Start 2nd Innings →',
+            onPress: () => {
+              const newId = createInnings(
+                Number(matchId), 2,
+                bowlingTeam,   // now bats
+                battingTeam    // now bowls
+              );
+              router.replace(
+                `/scoring?matchId=${matchId}&inningsId=${newId}&battingTeam=${bowlingTeam}&bowlingTeam=${battingTeam}` as any
+              );
+            },
+          },
+        ],
+        { cancelable: false }
       );
     } else {
       // Single innings OR 2nd innings complete
-      updateMatchStatus(Number(matchId), 'completed');
-      router.replace(`/scorecard?matchId=${matchId}` as any);
+      const runs = getTotalRuns(Number(inningsId));
+      const wkts = getWickets(Number(inningsId));
+      const balls = getLegalBalls(Number(inningsId));
+      const ovs  = `${Math.floor(balls / ballsPerOver)}.${balls % ballsPerOver}`;
+
+      let summary = `${battingTeam}: ${runs}/${wkts} (${ovs} ov)`;
+      if (firstInningsScore !== null) {
+        if (runs > firstInningsScore) {
+          const wicketsLeft = battingPlayers.length - 1 - wkts;
+          summary += `\n\n${battingTeam} won by ${wicketsLeft} wicket${wicketsLeft !== 1 ? 's' : ''}! 🏆`;
+        } else if (runs < firstInningsScore) {
+          const runDiff = firstInningsScore - runs;
+          summary += `\n\n${bowlingTeam} won by ${runDiff} run${runDiff !== 1 ? 's' : ''}! 🏆`;
+        } else {
+          summary += `\n\nMatch Tied! 🤝`;
+        }
+      }
+
+      Alert.alert(
+        '🏆 Match Complete!',
+        summary,
+        [
+          {
+            text: '↩ Undo Last Ball',
+            style: 'destructive',
+            onPress: () => {
+              performUndo();
+            },
+          },
+          {
+            text: 'View Scorecard 🏆',
+            onPress: () => {
+              updateMatchStatus(Number(matchId), 'completed');
+              router.replace(`/scorecard?matchId=${matchId}` as any);
+            },
+          },
+        ],
+        { cancelable: false }
+      );
     }
   };
 
@@ -240,11 +356,26 @@ export default function ScoringScreen() {
     if (newRuns > firstInningsScore) {
       const wkts = getWickets(Number(inningsId));
       const wicketsLeft = battingPlayers.length - 1 - wkts;
-      updateMatchStatus(Number(matchId), 'completed');
       Alert.alert(
         '🏆 Match Won!',
         `${battingTeam} won by ${wicketsLeft} wicket${wicketsLeft !== 1 ? 's' : ''}!`,
-        [{ text: 'View Scorecard', onPress: () => router.replace(`/scorecard?matchId=${matchId}` as any) }]
+        [
+          {
+            text: '↩ Undo Last Ball',
+            style: 'destructive',
+            onPress: () => {
+              performUndo();
+            },
+          },
+          {
+            text: 'View Scorecard 🏆',
+            onPress: () => {
+              updateMatchStatus(Number(matchId), 'completed');
+              router.replace(`/scorecard?matchId=${matchId}` as any);
+            },
+          },
+        ],
+        { cancelable: false }
       );
       return true;
     }
@@ -501,43 +632,7 @@ export default function ScoringScreen() {
       {
         text: 'Undo',
         style: 'destructive',
-        onPress: () => {
-          // Grab delivery before deleting it
-          const toUndo = getLastDelivery(Number(inningsId));
-          if (!toUndo) return;
-
-          undoLastDelivery(Number(inningsId));
-          refreshScore();
-
-          // Restore game state from new last delivery
-          const newLast = getLastDelivery(Number(inningsId));
-
-          if (!newLast) {
-            // No deliveries left — back to opener selection
-            setStriker(null);
-            setNonStriker(null);
-            setCurrentBowler(null);
-            setDismissedIds([]);
-            setIsFreeHit(false);
-            setNeedNewBowler(false);
-            setSelectBatsmanModal(true);
-          } else {
-            // Restore on-field players
-            setStriker(battingPlayers.find(p => p.id === newLast.batsman_id) ?? null);
-            setNonStriker(battingPlayers.find(p => p.id === newLast.non_striker_id) ?? null);
-            setCurrentBowler(bowlingPlayers.find(p => p.id === newLast.bowler_id) ?? null);
-
-            // Rebuild dismissed list from remaining deliveries
-            const remaining = getDeliveriesByInnings(Number(inningsId));
-            const dIds = remaining
-              .filter(d => d.is_wicket && d.dismissed_player_id !== null)
-              .map(d => d.dismissed_player_id as number);
-            setDismissedIds(dIds);
-
-            // Free hit: active if the new last delivery was a no-ball
-            setIsFreeHit(newLast.extras_type === 'noball');
-          }
-        },
+        onPress: performUndo,
       },
     ]);
   };

@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
+  Alert,
   ScrollView, Share,
   StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
@@ -12,6 +13,7 @@ import {
   getOversDisplay,
   getPlayersByTeam,
   getTotalRuns, getWickets,
+  updateMatchStatus,
 } from '../db/queries';
 import { CricketColors as C } from '../constants/theme';
 
@@ -84,6 +86,27 @@ export default function ScorecardScreen() {
 
     text += `Result: ${getResult()}`;
     await Share.share({ message: text });
+  };
+
+  const handleResumeScoring = () => {
+    if (innings.length === 0) return;
+    const latest = innings[innings.length - 1];
+    Alert.alert(
+      'Resume Match?',
+      'Reopen match to edit scores or undo deliveries?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Resume Scoring ✏️',
+          onPress: () => {
+            updateMatchStatus(Number(matchId), 'live');
+            router.push(
+              `/scoring?matchId=${matchId}&inningsId=${latest.id}&battingTeam=${latest.batting_team}&bowlingTeam=${latest.bowling_team}` as any
+            );
+          },
+        },
+      ]
+    );
   };
 
   const result = getResult();
@@ -203,6 +226,14 @@ export default function ScorecardScreen() {
 
         {/* Actions */}
         <TouchableOpacity
+          style={styles.resumeBtn}
+          onPress={handleResumeScoring}
+          activeOpacity={0.85}
+        >
+          <Text style={styles.resumeBtnText}>↩ Resume Match / Undo</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
           style={styles.rematchBtn}
           onPress={() => router.push(`/setup?rematchMatchId=${matchId}` as any)}
           activeOpacity={0.85}
@@ -293,6 +324,18 @@ const styles = StyleSheet.create({
   tdCell:    { flex: 1, color: C.text, fontSize: 13, textAlign: 'center' },
   highlight: { color: C.greenDark, fontWeight: '800' },
   highlightWickets: { color: C.red, fontWeight: '900' },
+
+  resumeBtn: {
+    backgroundColor: '#FEF3C7',
+    marginHorizontal: 16,
+    marginBottom: 12,
+    padding: 16,
+    borderRadius: 14,
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: '#F59E0B',
+  },
+  resumeBtnText: { color: '#B45309', fontSize: 16, fontWeight: '800' },
 
   rematchBtn: {
     backgroundColor: C.green,

@@ -151,6 +151,11 @@ export const updateInningsStatus = (inningsId: number, status: string): void => 
   db.runSync(`UPDATE innings SET status = ? WHERE id = ?`, [status, inningsId]);
 };
 
+export const deleteInnings = (inningsId: number): void => {
+  db.runSync(`DELETE FROM deliveries WHERE innings_id = ?`, [inningsId]);
+  db.runSync(`DELETE FROM innings WHERE id = ?`, [inningsId]);
+};
+
 // ─── DELIVERIES ──────────────────────────────────────────────────────────────
 
 /**

@@ -11,6 +11,7 @@ import {
   Match,
   deleteMatch, getAllMatches,
   getInningsByMatch,
+  updateMatchStatus,
 } from '../db/queries';
 import { CricketColors as C } from '../constants/theme';
 
@@ -31,6 +32,25 @@ export default function HomeScreen() {
       `${item.team1} vs ${item.team2}\nStatus: ${item.status === 'live' ? 'Live' : 'Completed'}`,
       [
         { text: 'Cancel', style: 'cancel' },
+        ...(item.status === 'completed'
+          ? [
+              {
+                text: '✏️ Resume Match / Edit',
+                onPress: () => {
+                  updateMatchStatus(item.id, 'live');
+                  const innings = getInningsByMatch(item.id);
+                  if (innings.length === 0) {
+                    router.push(`/toss?matchId=${item.id}` as any);
+                    return;
+                  }
+                  const latest = innings[innings.length - 1];
+                  router.push(
+                    `/scoring?matchId=${item.id}&inningsId=${latest.id}&battingTeam=${latest.batting_team}&bowlingTeam=${latest.bowling_team}` as any
+                  );
+                },
+              },
+            ]
+          : []),
         {
           text: '🔄 Rematch (Play Again)',
           onPress: () => {

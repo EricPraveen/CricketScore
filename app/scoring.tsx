@@ -134,6 +134,11 @@ export default function ScoringScreen() {
   const [runsBeforeRunOutModal,  setRunsBeforeRunOutModal]  = useState(false);
   const [pendingWicketRuns,      setPendingWicketRuns]      = useState(0);
 
+  // ── Byes / Leg Byes Modal State ───────────────────────────────────────────
+  const [byesModalVisible, setByesModalVisible] = useState(false);
+  const [byesType, setByesType]                 = useState<'bye' | 'legbye'>('bye');
+  const [byesRuns, setByesRuns]                 = useState(1);
+
   // ── Init ─────────────────────────────────────────────────────────────────
   useEffect(() => {
     // Try to restore state from existing deliveries
@@ -314,14 +319,30 @@ export default function ScoringScreen() {
       }
     } else if (isLegal) {
       // ── Mid-over: rotate on odd runs ──
-      // For byes/legbyes: rotation based on extras runs (striker/non-striker swap if odd)
+      // For byes/legbyes: rotation based on runs (striker/non-striker swap if odd)
       const rotateRuns = (extrasType === 'bye' || extrasType === 'legbye')
-        ? extrasValue : runs;
+        ? (runs > 0 ? runs : extrasValue) : runs;
       if (rotateRuns % 2 !== 0) {
         rotateStrike();
       }
     }
     // Wide / No Ball → no strike rotation
+  };
+
+  // ── Byes handlers ────────────────────────────────────────────────────────
+  const openByesModal = (type: 'bye' | 'legbye') => {
+    if (!striker || !nonStriker || !currentBowler) {
+      Alert.alert('Select Players', 'Please select batsmen and bowler first.');
+      return;
+    }
+    setByesType(type);
+    setByesRuns(1);
+    setByesModalVisible(true);
+  };
+
+  const confirmByes = () => {
+    setByesModalVisible(false);
+    handleRun(byesRuns, byesType, 0);
   };
 
   // ── handleWicket ─────────────────────────────────────────────────────────
@@ -501,8 +522,14 @@ export default function ScoringScreen() {
     if (d.is_wicket)                return 'W';
     if (d.extras_type === 'wide')   return 'Wd';
     if (d.extras_type === 'noball') return 'Nb';
-    if (d.extras_type === 'bye')    return 'B';
-    if (d.extras_type === 'legbye') return 'Lb';
+    if (d.extras_type === 'bye') {
+      const r = d.batsman_runs > 0 ? d.batsman_runs : d.extras_value;
+      return r > 1 ? `${r}B` : 'B';
+    }
+    if (d.extras_type === 'legbye') {
+      const r = d.batsman_runs > 0 ? d.batsman_runs : d.extras_value;
+      return r > 1 ? `${r}Lb` : 'Lb';
+    }
     if (d.batsman_runs === 4)       return '4';
     if (d.batsman_runs === 6)       return '6';
     return d.batsman_runs.toString();
@@ -511,6 +538,7 @@ export default function ScoringScreen() {
   const getBallBadge = (d: Delivery): { bg: string; text: string; border: string } => {
     if (d.is_wicket) return { bg: '#FEE2E2', text: '#DC2626', border: '#FCA5A5' };
     if (d.extras_type === 'wide' || d.extras_type === 'noball') return { bg: '#FEF3C7', text: '#D97706', border: '#FDE68A' };
+    if (d.extras_type === 'bye' || d.extras_type === 'legbye') return { bg: '#FEF3C7', text: '#B45309', border: '#FDE68A' };
     if (d.batsman_runs === 6) return { bg: '#F3E8FF', text: '#7C3AED', border: '#DDD6FE' };
     if (d.batsman_runs === 4) return { bg: '#DCFCE7', text: '#15803D', border: '#86EFAC' };
     if (d.batsman_runs > 0)   return { bg: '#F1F5F2', text: '#0F172A', border: '#E2EBE3' };
@@ -812,21 +840,37 @@ export default function ScoringScreen() {
 
         {/* ── Extras Row ── */}
         <View style={styles.extrasRow}>
-          {[
-            { label: 'Wide',    type: 'wide',   val: 1 },
-            { label: 'No Ball', type: 'noball', val: 1 },
-            { label: 'Bye',     type: 'bye',    val: 1 },
-            { label: 'Leg Bye', type: 'legbye', val: 1 },
-          ].map(({ label, type, val }) => (
-            <TouchableOpacity
-              key={type}
-              style={styles.extraBtn}
-              onPress={() => handleRun(0, type, val)}
-              activeOpacity={0.75}
-            >
-              <Text style={styles.extraBtnText}>{label}</Text>
-            </TouchableOpacity>
-          ))}
+          <TouchableOpacity
+            style={styles.extraBtn}
+            onPress={() => handleRun(0, 'wide', 1)}
+            activeOpacity={0.75}
+          >
+            <Text style={styles.extraBtnText}>Wide</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.extraBtn}
+            onPress={() => handleRun(0, 'noball', 1)}
+            activeOpacity={0.75}
+          >
+            <Text style={styles.extraBtnText}>No Ball</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.extraBtn}
+            onPress={() => openByesModal('bye')}
+            activeOpacity={0.75}
+          >
+            <Text style={styles.extraBtnText}>Bye</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.extraBtn}
+            onPress={() => openByesModal('legbye')}
+            activeOpacity={0.75}
+          >
+            <Text style={styles.extraBtnText}>Leg Bye</Text>
+          </TouchableOpacity>
         </View>
 
         {/* ── Bottom Row: Undo | Wicket ── */}
@@ -1084,6 +1128,98 @@ export default function ScoringScreen() {
                 );
               })}
             </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ─────── BYES / LEG BYES MODAL ─────── */}
+      <Modal visible={byesModalVisible} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalBox}>
+            <View style={styles.byesHeaderRow}>
+              <Text style={styles.modalTitle}>
+                {byesType === 'bye' ? '🏏 Bye Runs' : '🦵 Leg Bye Runs'}
+              </Text>
+              <Text style={styles.modalSubtitle}>
+                Ball counts towards over. Adjust runs scored:
+              </Text>
+            </View>
+
+            {/* Counter Controls */}
+            <View style={styles.byesCounterRow}>
+              <TouchableOpacity
+                style={[styles.byesCounterBtn, byesRuns <= 1 && styles.byesCounterBtnDisabled]}
+                onPress={() => setByesRuns(prev => Math.max(1, prev - 1))}
+                disabled={byesRuns <= 1}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="remove" size={24} color={byesRuns <= 1 ? C.textMuted : C.text} />
+              </TouchableOpacity>
+
+              <View style={styles.byesDisplayBox}>
+                <Text style={styles.byesCountText}>{byesRuns}</Text>
+                <Text style={styles.byesCountUnit}>{byesRuns === 1 ? 'RUN' : 'RUNS'}</Text>
+              </View>
+
+              <TouchableOpacity
+                style={styles.byesCounterBtn}
+                onPress={() => setByesRuns(prev => prev + 1)}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="add" size={24} color={C.greenDark} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Strike Rotation Indicator Note */}
+            <View style={styles.byesNoteBox}>
+              <Ionicons
+                name={byesRuns % 2 !== 0 ? "swap-horizontal" : "checkmark-circle-outline"}
+                size={16}
+                color={byesRuns % 2 !== 0 ? C.greenDark : C.textSub}
+              />
+              <Text style={styles.byesNoteText}>
+                {byesRuns % 2 !== 0
+                  ? `Odd runs (${byesRuns}) — Added to batsman & strike will rotate ⇄`
+                  : `Even runs (${byesRuns}) — Added to batsman & strike stays`}
+              </Text>
+            </View>
+
+            {/* Quick Presets */}
+            <View style={styles.byesPresetsRow}>
+              {[1, 2, 3, 4].map(num => (
+                <TouchableOpacity
+                  key={num}
+                  style={[styles.byesPresetBtn, byesRuns === num && styles.byesPresetBtnActive]}
+                  onPress={() => setByesRuns(num)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[styles.byesPresetText, byesRuns === num && styles.byesPresetTextActive]}>
+                    {num}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {/* Action Buttons */}
+            <View style={styles.byesActionsRow}>
+              <TouchableOpacity
+                style={styles.byesCancelBtn}
+                onPress={() => setByesModalVisible(false)}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.byesCancelText}>Cancel</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.byesConfirmBtn}
+                onPress={confirmByes}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.byesConfirmText}>
+                  Confirm {byesRuns} {byesRuns === 1 ? 'Run' : 'Runs'} →
+                </Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
@@ -1502,5 +1638,135 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 16,
     fontWeight: '800',
+  },
+
+  // ── Byes Modal Styles ──────────────────────────────────────────────────
+  byesHeaderRow: {
+    marginBottom: 8,
+    alignItems: 'center',
+  },
+  byesCounterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 20,
+    marginVertical: 14,
+  },
+  byesCounterBtn: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: C.cardAlt,
+    borderWidth: 1.5,
+    borderColor: C.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  byesCounterBtnDisabled: {
+    opacity: 0.35,
+  },
+  byesDisplayBox: {
+    minWidth: 96,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 14,
+    backgroundColor: C.greenLight,
+    borderWidth: 1.5,
+    borderColor: '#86EFAC',
+  },
+  byesCountText: {
+    fontSize: 34,
+    fontWeight: '900',
+    color: C.greenDark,
+    lineHeight: 40,
+  },
+  byesCountUnit: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: C.greenDark,
+    letterSpacing: 0.8,
+  },
+  byesNoteBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: C.bg,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: C.border,
+  },
+  byesNoteText: {
+    fontSize: 12,
+    color: C.textSub,
+    fontWeight: '600',
+  },
+  byesPresetsRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 10,
+    marginBottom: 16,
+  },
+  byesPresetBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: C.surface,
+    borderWidth: 1.2,
+    borderColor: C.border,
+    alignItems: 'center',
+  },
+  byesPresetBtnActive: {
+    backgroundColor: C.green,
+    borderColor: C.green,
+  },
+  byesPresetText: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: C.text,
+  },
+  byesPresetTextActive: {
+    color: '#FFFFFF',
+  },
+  byesActionsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 4,
+  },
+  byesCancelBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    backgroundColor: C.bg,
+    borderWidth: 1,
+    borderColor: C.border,
+    alignItems: 'center',
+  },
+  byesCancelText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: C.textSub,
+  },
+  byesConfirmBtn: {
+    flex: 2,
+    paddingVertical: 14,
+    borderRadius: 12,
+    backgroundColor: C.green,
+    alignItems: 'center',
+    shadowColor: C.green,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  byesConfirmText: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#FFFFFF',
   },
 });

@@ -2,7 +2,7 @@ import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system/legacy';
 import { Match, Innings, Player, BatsmanStats, BowlerStats } from '../db/queries';
-import { FallOfWicket, Partnership } from './cricketStats';
+import { FallOfWicket, OverSummary, Partnership } from './cricketStats';
 
 export interface InningsPdfData {
   innings: Innings;
@@ -34,6 +34,7 @@ export interface InningsPdfData {
   };
   fow?: FallOfWicket[];
   partnerships?: Partnership[];
+  overSummaries?: OverSummary[];
 }
 
 export interface ScorecardPdfOptions {
@@ -293,6 +294,52 @@ export function generateScorecardHtml(options: ScorecardPdfOptions): string {
           `
               : ''
           }
+
+          <!-- Over-by-Over Manhattan Bar Chart -->
+          ${
+            inn.overSummaries && inn.overSummaries.length > 0
+              ? `
+            <div style="margin-top: 16px;">
+              <div class="section-label">OVER-BY-OVER (MANHATTAN)</div>
+              <div class="chart-box">
+                <svg viewBox="0 0 740 100" style="width: 100%; height: 100px; display: block;">
+                  <line x1="10" y1="80" x2="730" y2="80" stroke="#E2E8F0" stroke-width="1" />
+                  ${(() => {
+                    const summaries = inn.overSummaries!;
+                    const n = summaries.length;
+                    const colWidth = 720 / n;
+                    const barWidth = Math.min(Math.max(colWidth * 0.5, 8), 22);
+                    const maxR = Math.max(...summaries.map((s) => s.runs), 6);
+                    const barColor = idx === 0 ? '#15803D' : '#D97706';
+
+                    return summaries
+                      .map((s) => {
+                        const xCenter = 10 + (s.overNo - 0.5) * colWidth;
+                        const xBar = xCenter - barWidth / 2;
+                        const barHeight = Math.max((s.runs / maxR) * 54, 3);
+                        const yBar = 80 - barHeight;
+
+                        const wktBadge =
+                          s.wickets > 0
+                            ? `<circle cx="${xCenter}" cy="${yBar - 10}" r="5.5" fill="#EF4444" />
+                               <text x="${xCenter}" y="${yBar - 8}" font-size="7" font-weight="900" fill="#FFFFFF" text-anchor="middle">${s.wickets > 1 ? s.wickets + 'W' : 'W'}</text>`
+                            : '';
+
+                        return `
+                          <rect x="${xBar}" y="${yBar}" width="${barWidth}" height="${barHeight}" rx="3" fill="${barColor}" />
+                          <text x="${xCenter}" y="${yBar - (s.wickets > 0 ? 19 : 3)}" font-size="8.5" font-weight="700" fill="#0F172A" text-anchor="middle">${s.runs}</text>
+                          ${wktBadge}
+                          <text x="${xCenter}" y="93" font-size="8.5" font-weight="600" fill="#64748B" text-anchor="middle">${s.overNo}</text>
+                        `;
+                      })
+                      .join('');
+                  })()}
+                </svg>
+              </div>
+            </div>
+          `
+              : ''
+          }
         </div>
       `;
     })
@@ -454,6 +501,12 @@ export function generateScorecardHtml(options: ScorecardPdfOptions): string {
           vertical-align: middle;
           letter-spacing: 0.5px;
         }
+        .chart-box {
+          background-color: #F8FAFC;
+          border: 1px solid #E2E8F0;
+          border-radius: 8px;
+          padding: 10px;
+        }
         .footer {
           margin-top: 24px;
           padding-top: 12px;
@@ -489,6 +542,114 @@ export function generateScorecardHtml(options: ScorecardPdfOptions): string {
 
         <!-- All Innings -->
         ${inningsHtml}
+
+        <!-- Match Progression (Worm Graph) -->
+        ${(() => {
+          const hasInningsData = inningsData.filter((inn) => inn.overSummaries && inn.overSummaries.length > 0);
+          if (hasInningsData.length < 2) return '';
+
+          const allTotals = hasInningsData.map((d) => d.totalRuns);
+          const maxScore = Math.max(...allTotals, 10);
+          const yMax = Math.ceil(maxScore / 20) * 20 || 20;
+          const maxOvers = Math.max(
+            options.match?.overs || 10,
+            ...hasInningsData.map((d) => d.overSummaries?.length || 0),
+            5
+          );
+
+          const w = 740;
+          const h = 150;
+          const pL = 40;
+          const pR = 20;
+          const pT = 16;
+          const pB = 26;
+          const gW = w - pL - pR;
+          const gH = h - pT - pB;
+
+          const gridLines = [0, 0.25, 0.5, 0.75, 1]
+            .map((pct) => {
+              const y = pT + gH * (1 - pct);
+              const scoreVal = Math.round(yMax * pct);
+              return `
+                <line x1="${pL}" y1="${y}" x2="${w - pR}" y2="${y}" stroke="#E2E8F0" stroke-dasharray="3 3" stroke-width="1" />
+                <text x="${pL - 6}" y="${y + 3}" font-size="9" fill="#94A3B8" text-anchor="end" font-weight="500">${scoreVal}</text>
+              `;
+            })
+            .join('');
+
+          const step = maxOvers <= 10 ? 1 : Math.ceil(maxOvers / 8);
+          const xLabels = Array.from({ length: Math.floor(maxOvers / step) + 1 })
+            .map((_, i) => {
+              const ov = i * step;
+              const x = pL + (ov / maxOvers) * gW;
+              return `
+                <line x1="${x}" y1="${pT + gH}" x2="${x}" y2="${pT + gH + 4}" stroke="#CBD5E1" stroke-width="1" />
+                <text x="${x}" y="${pT + gH + 15}" font-size="9" fill="#64748B" text-anchor="middle" font-weight="500">${ov}</text>
+              `;
+            })
+            .join('');
+
+          const lines = hasInningsData
+            .map((inn, idx) => {
+              const lineColor = idx === 0 ? '#15803D' : '#D97706';
+              const summaries = inn.overSummaries!;
+              const pts = [`${pL},${pT + gH}`];
+
+              summaries.forEach((s) => {
+                const x = pL + (s.overNo / maxOvers) * gW;
+                const clampedRuns = Math.min(s.cumulativeRuns, yMax);
+                const y = pT + gH - (clampedRuns / yMax) * gH;
+                pts.push(`${x.toFixed(1)},${y.toFixed(1)}`);
+              });
+
+              const wktDots = summaries
+                .filter((s) => s.wickets > 0)
+                .map((s) => {
+                  const x = pL + (s.overNo / maxOvers) * gW;
+                  const clampedRuns = Math.min(s.cumulativeRuns, yMax);
+                  const y = pT + gH - (clampedRuns / yMax) * gH;
+                  return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="4" fill="#EF4444" stroke="#FFFFFF" stroke-width="1.5" />`;
+                })
+                .join('');
+
+              return `
+                <polyline points="${pts.join(' ')}" fill="none" stroke="${lineColor}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
+                ${wktDots}
+              `;
+            })
+            .join('');
+
+          return `
+            <div class="innings-card" style="margin-top: 18px;">
+              <div class="section-label" style="margin-bottom: 8px;">MATCH PROGRESSION (WORM GRAPH)</div>
+              <div class="chart-box">
+                <svg viewBox="0 0 ${w} ${h}" style="width: 100%; height: ${h}px; display: block;">
+                  ${gridLines}
+                  ${xLabels}
+                  <text x="${w - pR}" y="${pT + gH + 20}" font-size="8.5" fill="#94A3B8" text-anchor="end" font-weight="600">OVERS</text>
+                  ${lines}
+                </svg>
+                <div style="display: flex; justify-content: center; gap: 20px; margin-top: 10px; font-size: 11px;">
+                  ${hasInningsData
+                    .map((inn, idx) => {
+                      const color = idx === 0 ? '#15803D' : '#D97706';
+                      return `
+                        <div style="display: flex; align-items: center; gap: 6px;">
+                          <div style="width: 14px; height: 3px; background-color: ${color}; border-radius: 2px;"></div>
+                          <span><b>${inn.battingTeam}</b>: ${inn.totalRuns}/${inn.wickets}</span>
+                        </div>
+                      `;
+                    })
+                    .join('')}
+                  <div style="display: flex; align-items: center; gap: 6px;">
+                    <div style="width: 7px; height: 7px; background-color: #EF4444; border-radius: 50%;"></div>
+                    <span style="color: #64748B;">Wicket</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          `;
+        })()}
 
         <!-- Footer -->
         <div class="footer">

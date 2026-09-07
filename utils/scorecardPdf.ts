@@ -2,6 +2,7 @@ import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system/legacy';
 import { Match, Innings, Player, BatsmanStats, BowlerStats } from '../db/queries';
+import { FallOfWicket, Partnership } from './cricketStats';
 
 export interface InningsPdfData {
   innings: Innings;
@@ -31,6 +32,8 @@ export interface InningsPdfData {
     legbyes: number;
     penalty?: number;
   };
+  fow?: FallOfWicket[];
+  partnerships?: Partnership[];
 }
 
 export interface ScorecardPdfOptions {
@@ -62,7 +65,11 @@ export function generateScorecardHtml(options: ScorecardPdfOptions): string {
       })
     : '';
 
-
+  const getOrdinal = (n: number) => {
+    const s = ['th', 'st', 'nd', 'rd'];
+    const v = n % 100;
+    return s[(v - 20) % 10] || s[v] || s[0];
+  };
 
   const inningsHtml = inningsData
     .map((inn, idx) => {
@@ -214,6 +221,78 @@ export function generateScorecardHtml(options: ScorecardPdfOptions): string {
           `
               : ''
           }
+
+          <!-- Fall of Wickets -->
+          ${
+            inn.fow && inn.fow.length > 0
+              ? `
+            <div style="margin-top: 16px;">
+              <div class="section-label">FALL OF WICKETS</div>
+              <div class="fow-box">
+                ${inn.fow
+                  .map(
+                    (f) =>
+                      `<span class="fow-item"><b>${f.wicketNum}-${f.score}</b> <span style="color: #64748B;">(${f.batsmanName}, ${f.overs} ov)</span></span>`
+                  )
+                  .join('<span style="color: #CBD5E1; margin: 0 6px;">•</span>')}
+              </div>
+            </div>
+          `
+              : ''
+          }
+
+          <!-- Partnerships -->
+          ${
+            inn.partnerships && inn.partnerships.length > 0
+              ? `
+            <div style="margin-top: 16px;">
+              <div class="section-label">PARTNERSHIPS</div>
+              <table class="stats-table">
+                <thead>
+                  <tr>
+                    <th style="text-align: left; width: 22%;">Wicket</th>
+                    <th style="text-align: right; width: 14%;">Runs (Balls)</th>
+                    <th style="text-align: left; width: 32%;">Batter 1</th>
+                    <th style="text-align: left; width: 32%;">Batter 2</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${(() => {
+                    const maxStandRuns = Math.max(...inn.partnerships!.map((p) => p.totalRuns), 1);
+                    return inn.partnerships!
+                      .map((p) => {
+                        const isHighest = p.totalRuns === maxStandRuns && p.totalRuns > 0;
+                        const wktLabel = p.isUnbroken
+                          ? `${p.wicketNum}* (Unbroken)`
+                          : `${p.wicketNum}${getOrdinal(p.wicketNum)} Wkt`;
+                        const highestBadge = isHighest
+                          ? '<span class="highest-badge">BEST</span>'
+                          : '';
+                        return `
+                          <tr>
+                            <td style="padding: 7px 12px; font-weight: 700; color: #334155;">
+                              ${wktLabel} ${highestBadge}
+                            </td>
+                            <td style="padding: 7px 12px; text-align: right; font-weight: 800; color: #0F172A;">
+                              ${p.totalRuns} <span style="font-weight: 400; color: #64748B; font-size: 11px;">(${p.totalBalls}b)</span>
+                            </td>
+                            <td style="padding: 7px 12px; color: #1E293B;">
+                              ${p.batsman1.name} <b>${p.batsman1.runs}</b> <span style="color: #64748B; font-size: 11px;">(${p.batsman1.balls}b)</span>
+                            </td>
+                            <td style="padding: 7px 12px; color: #1E293B;">
+                              ${p.batsman2.name} <b>${p.batsman2.runs}</b> <span style="color: #64748B; font-size: 11px;">(${p.batsman2.balls}b)</span>
+                            </td>
+                          </tr>
+                        `;
+                      })
+                      .join('');
+                  })()}
+                </tbody>
+              </table>
+            </div>
+          `
+              : ''
+          }
         </div>
       `;
     })
@@ -349,6 +428,31 @@ export function generateScorecardHtml(options: ScorecardPdfOptions): string {
           padding: 8px 12px;
           border-radius: 0 0 8px 8px;
           font-size: 12px;
+        }
+        .fow-box {
+          background-color: #F8FAFC;
+          border: 1px solid #E2E8F0;
+          border-radius: 8px;
+          padding: 10px 14px;
+          font-size: 11.5px;
+          line-height: 1.8;
+          color: #1E293B;
+        }
+        .fow-item {
+          display: inline-block;
+          white-space: nowrap;
+        }
+        .highest-badge {
+          display: inline-block;
+          background-color: #FEF3C7;
+          color: #92400E;
+          font-size: 9px;
+          font-weight: 800;
+          padding: 1px 5px;
+          border-radius: 4px;
+          margin-left: 4px;
+          vertical-align: middle;
+          letter-spacing: 0.5px;
         }
         .footer {
           margin-top: 24px;

@@ -1,6 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   ScrollView, Share,
   StyleSheet, Text, TouchableOpacity, View,
@@ -8,7 +10,9 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   getBatsmanStats, getBowlerStats,
+  getDeliveriesByInnings,
   getInningsByMatch,
+  getLegalBalls,
   getMatchById,
   getOversDisplay,
   getPlayersByTeam,
@@ -16,10 +20,12 @@ import {
   updateMatchStatus,
 } from '../db/queries';
 import { CricketColors as C } from '../constants/theme';
+import { InningsPdfData, shareScorecardAsPdf } from '../utils/scorecardPdf';
 
 export default function ScorecardScreen() {
   const router   = useRouter();
   const { matchId } = useLocalSearchParams<{ matchId: string }>();
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
 
   const match   = getMatchById(Number(matchId));
   const ballsPerOver = match?.balls_per_over ?? 6;
@@ -86,6 +92,118 @@ export default function ScorecardScreen() {
 
     text += `Result: ${getResult()}`;
     await Share.share({ message: text });
+  };
+
+  // ── Share PDF ──────────────────────────────────────────────────────────────
+  const handleSharePdf = async () => {
+    if (isGeneratingPdf) return;
+    setIsGeneratingPdf(true);
+    try {
+      const allPlayersInMatch = [
+        ...getPlayersByTeam(Number(matchId), match?.team1 || ''),
+        ...getPlayersByTeam(Number(matchId), match?.team2 || ''),
+      ];
+
+      const inningsData: InningsPdfData[] = innings.map((inn) => {
+        const bp = getPlayersByTeam(Number(matchId), inn.batting_team);
+        const blp = getPlayersByTeam(Number(matchId), inn.bowling_team);
+        const runs = getTotalRuns(inn.id);
+        const wkts = getWickets(inn.id);
+        const ovs = getOversDisplay(inn.id, ballsPerOver);
+        const legalBalls = getLegalBalls(inn.id);
+        const deliveries = getDeliveriesByInnings(inn.id);
+
+        const totalOversDec = legalBalls / ballsPerOver;
+        const runRate = totalOversDec > 0 ? (runs / totalOversDec).toFixed(2) : '0.00';
+
+        const batsmen = bp.map((p) => {
+          const s = getBatsmanStats(inn.id, p.id);
+          const sr = s.balls_faced > 0 ? ((s.runs / s.balls_faced) * 100).toFixed(0) : '-';
+
+          const dismissalDel = deliveries.find((d) => d.is_wicket && d.dismissed_player_id === p.id);
+          let dismissal = 'not out';
+          if (dismissalDel) {
+            const bowlerObj = allPlayersInMatch.find((pl) => pl.id === dismissalDel.bowler_id);
+            const bowlerName = bowlerObj ? bowlerObj.name : 'Bowler';
+            if (dismissalDel.wicket_type === 'Bowled') {
+              dismissal = `b ${bowlerName}`;
+            } else if (dismissalDel.wicket_type === 'Caught') {
+              dismissal = `c & b ${bowlerName}`;
+            } else if (dismissalDel.wicket_type === 'LBW') {
+              dismissal = `lbw b ${bowlerName}`;
+            } else if (dismissalDel.wicket_type === 'Run Out') {
+              dismissal = 'run out';
+            } else if (dismissalDel.wicket_type === 'Stumped') {
+              dismissal = `st b ${bowlerName}`;
+            } else if (dismissalDel.wicket_type === 'Hit Wicket') {
+              dismissal = `hit wkt b ${bowlerName}`;
+            } else {
+              dismissal = dismissalDel.wicket_type ? `${dismissalDel.wicket_type.toLowerCase()}` : 'out';
+            }
+          } else if (s.balls_faced === 0 && s.runs === 0) {
+            dismissal = 'did not bat';
+          }
+
+          return {
+            player: p,
+            stats: s,
+            dismissal,
+            strikeRate: sr,
+          };
+        });
+
+        const bowlers = blp
+          .map((p) => {
+            const s = getBowlerStats(inn.id, p.id);
+            if (s.balls_bowled === 0) return null;
+            const ovsStr = `${Math.floor(s.balls_bowled / ballsPerOver)}.${s.balls_bowled % ballsPerOver}`;
+            const eco = s.balls_bowled > 0 ? ((s.runs_given / s.balls_bowled) * ballsPerOver).toFixed(1) : '-';
+            return {
+              player: p,
+              stats: s,
+              oversStr: ovsStr,
+              economy: eco,
+            };
+          })
+          .filter((b): b is NonNullable<typeof b> => b !== null);
+
+        const wides = deliveries.filter((d) => d.extras_type === 'wide').reduce((acc, d) => acc + d.extras_value, 0);
+        const noballs = deliveries.filter((d) => d.extras_type === 'noball').reduce((acc, d) => acc + d.extras_value, 0);
+        const byes = deliveries.filter((d) => d.extras_type === 'bye').reduce((acc, d) => acc + d.extras_value, 0);
+        const legbyes = deliveries.filter((d) => d.extras_type === 'legbye').reduce((acc, d) => acc + d.extras_value, 0);
+        const extrasTotal = wides + noballs + byes + legbyes;
+
+        return {
+          innings: inn,
+          battingTeam: inn.batting_team,
+          bowlingTeam: inn.bowling_team,
+          totalRuns: runs,
+          wickets: wkts,
+          overs: ovs,
+          runRate,
+          batsmen,
+          bowlers,
+          extras: {
+            total: extrasTotal,
+            wides,
+            noballs,
+            byes,
+            legbyes,
+          },
+        };
+      });
+
+      await shareScorecardAsPdf({
+        match,
+        result: getResult(),
+        ballsPerOver,
+        inningsData,
+      });
+    } catch (error: any) {
+      Alert.alert('PDF Error', error?.message || 'Could not generate PDF scorecard.');
+    } finally {
+      setIsGeneratingPdf(false);
+    }
   };
 
   const handleResumeScoring = () => {
@@ -241,8 +359,30 @@ export default function ScorecardScreen() {
           <Text style={styles.rematchBtnText}>🔄 Rematch / Play Again</Text>
         </TouchableOpacity>
 
+        <TouchableOpacity
+          style={styles.sharePdfBtn}
+          onPress={handleSharePdf}
+          disabled={isGeneratingPdf}
+          activeOpacity={0.85}
+        >
+          {isGeneratingPdf ? (
+            <View style={styles.btnRow}>
+              <ActivityIndicator color="#FFFFFF" size="small" />
+              <Text style={styles.sharePdfBtnText}>Generating PDF...</Text>
+            </View>
+          ) : (
+            <View style={styles.btnRow}>
+              <Ionicons name="document-text" size={20} color="#FFFFFF" />
+              <Text style={styles.sharePdfBtnText}>Share Scorecard (PDF)</Text>
+            </View>
+          )}
+        </TouchableOpacity>
+
         <TouchableOpacity style={styles.shareBtn} onPress={handleShare} activeOpacity={0.85}>
-          <Text style={styles.shareBtnText}>📤 Share Scorecard</Text>
+          <View style={styles.btnRow}>
+            <Ionicons name="chatbubble-ellipses-outline" size={18} color={C.greenDark} />
+            <Text style={styles.shareBtnText}>Share as Text</Text>
+          </View>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -352,17 +492,38 @@ const styles = StyleSheet.create({
   },
   rematchBtnText: { color: '#ffffff', fontSize: 16, fontWeight: '800' },
 
-  shareBtn: {
-    backgroundColor: C.cardAlt,
+  btnRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  sharePdfBtn: {
+    backgroundColor: '#047857',
     marginHorizontal: 16,
     marginBottom: 10,
     padding: 16,
     borderRadius: 14,
     alignItems: 'center',
-    borderWidth: 1.5,
-    borderColor: C.green,
+    shadowColor: '#047857',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    elevation: 3,
   },
-  shareBtnText: { color: C.greenDark, fontSize: 15, fontWeight: '800' },
+  sharePdfBtnText: { color: '#ffffff', fontSize: 16, fontWeight: '800' },
+
+  shareBtn: {
+    backgroundColor: C.surface,
+    marginHorizontal: 16,
+    marginBottom: 10,
+    padding: 14,
+    borderRadius: 14,
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: C.border,
+  },
+  shareBtnText: { color: C.textSub, fontSize: 14, fontWeight: '700' },
 
   homeBtn: {
     backgroundColor: C.surface, marginHorizontal: 16,

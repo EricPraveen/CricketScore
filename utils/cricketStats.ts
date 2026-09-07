@@ -209,3 +209,80 @@ export function calculatePartnerships(
 
   return partnerships;
 }
+
+export interface OverSummary {
+  overNo: number;            // 1-indexed (Over 1, 2, 3...)
+  runs: number;              // Runs scored in this over
+  wickets: number;           // Wickets fell in this over
+  cumulativeRuns: number;    // Running team total after this over
+  cumulativeWickets: number; // Running wickets down after this over
+  runRate: number;           // Cumulative run rate after this over
+  legalBalls: number;        // Legal balls bowled in this over
+}
+
+/**
+ * Groups deliveries by over and computes per-over and cumulative statistics.
+ */
+export function calculateOverSummaries(
+  deliveries: Delivery[],
+  ballsPerOver: number = 6
+): OverSummary[] {
+  if (!deliveries || deliveries.length === 0) return [];
+
+  const sorted = [...deliveries].sort((a, b) => a.id - b.id);
+
+  const overMap = new Map<number, { runs: number; wickets: number; legalBalls: number }>();
+  let maxOverNo = 0;
+
+  for (const d of sorted) {
+    const oNo = d.over_no;
+    if (oNo > maxOverNo) maxOverNo = oNo;
+
+    const ballExtras =
+      (d.wide_runs ?? (d.extras_type === 'wide' ? d.extras_value : 0)) +
+      (d.noball_runs ?? (d.extras_type === 'noball' ? (d.extras_value > 0 ? d.extras_value : 1) : 0)) +
+      (d.bye_runs ?? (d.extras_type === 'bye' ? d.extras_value : 0)) +
+      (d.legbye_runs ?? (d.extras_type === 'legbye' ? d.extras_value : 0)) +
+      (d.penalty_runs ?? (d.extras_type === 'penalty' ? d.extras_value : 0));
+
+    const runs = (d.batsman_runs ?? 0) + ballExtras;
+    const wkt = d.is_wicket === 1 ? 1 : 0;
+    const legal = d.is_legal_delivery === 1 ? 1 : 0;
+
+    const current = overMap.get(oNo) || { runs: 0, wickets: 0, legalBalls: 0 };
+    current.runs += runs;
+    current.wickets += wkt;
+    current.legalBalls += legal;
+    overMap.set(oNo, current);
+  }
+
+  const summaries: OverSummary[] = [];
+  let runningRuns = 0;
+  let runningWkts = 0;
+  let totalLegalBalls = 0;
+
+  for (let o = 0; o <= maxOverNo; o++) {
+    const data = overMap.get(o);
+    if (!data) continue;
+
+    runningRuns += data.runs;
+    runningWkts += data.wickets;
+    totalLegalBalls += data.legalBalls;
+
+    const oversDec = totalLegalBalls / ballsPerOver;
+    const runRate = oversDec > 0 ? Number((runningRuns / oversDec).toFixed(2)) : 0;
+
+    summaries.push({
+      overNo: o + 1,
+      runs: data.runs,
+      wickets: data.wickets,
+      cumulativeRuns: runningRuns,
+      cumulativeWickets: runningWkts,
+      runRate,
+      legalBalls: data.legalBalls,
+    });
+  }
+
+  return summaries;
+}
+

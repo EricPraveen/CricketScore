@@ -21,7 +21,8 @@ import {
 } from '../db/queries';
 import { CricketColors as C } from '../constants/theme';
 import { InningsPdfData, shareScorecardAsPdf } from '../utils/scorecardPdf';
-import { calculateFallOfWickets, calculatePartnerships } from '../utils/cricketStats';
+import { calculateFallOfWickets, calculatePartnerships, calculateOverSummaries } from '../utils/cricketStats';
+import { MatchCharts } from '../components/MatchCharts';
 
 const getOrdinalSuffix = (n: number) => {
   const s = ['th', 'st', 'nd', 'rd'];
@@ -183,6 +184,7 @@ export default function ScorecardScreen() {
 
         const fow = calculateFallOfWickets(deliveries, allPlayersInMatch, ballsPerOver);
         const partnerships = calculatePartnerships(deliveries, allPlayersInMatch);
+        const overSummaries = calculateOverSummaries(deliveries, ballsPerOver);
 
         return {
           innings: inn,
@@ -204,6 +206,7 @@ export default function ScorecardScreen() {
           },
           fow,
           partnerships,
+          overSummaries,
         };
       });
 
@@ -435,6 +438,27 @@ export default function ScorecardScreen() {
             </View>
           );
         })}
+
+        {/* Match Analysis & Charts */}
+        <MatchCharts
+          inningsData={innings.map((inn, i) => {
+            const deliveries = getDeliveriesByInnings(inn.id);
+            const allPlayers = [
+              ...getPlayersByTeam(Number(matchId), match?.team1 || ''),
+              ...getPlayersByTeam(Number(matchId), match?.team2 || ''),
+            ];
+            return {
+              inningsNo: i + 1,
+              teamName: inn.batting_team,
+              oversCount: match?.overs || 10,
+              summaries: calculateOverSummaries(deliveries, ballsPerOver),
+              totalRuns: getTotalRuns(inn.id),
+              wickets: getWickets(inn.id),
+              fow: calculateFallOfWickets(deliveries, allPlayers, ballsPerOver),
+            };
+          })}
+          totalMatchOvers={match?.overs || 10}
+        />
 
         {/* Actions */}
         <TouchableOpacity

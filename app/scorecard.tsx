@@ -167,11 +167,12 @@ export default function ScorecardScreen() {
           })
           .filter((b): b is NonNullable<typeof b> => b !== null);
 
-        const wides = deliveries.filter((d) => d.extras_type === 'wide').reduce((acc, d) => acc + d.extras_value, 0);
-        const noballs = deliveries.filter((d) => d.extras_type === 'noball').reduce((acc, d) => acc + d.extras_value, 0);
-        const byes = deliveries.filter((d) => d.extras_type === 'bye').reduce((acc, d) => acc + d.extras_value, 0);
-        const legbyes = deliveries.filter((d) => d.extras_type === 'legbye').reduce((acc, d) => acc + d.extras_value, 0);
-        const extrasTotal = wides + noballs + byes + legbyes;
+        const wides = deliveries.reduce((acc, d) => acc + (d.wide_runs ?? (d.extras_type === 'wide' ? d.extras_value : 0)), 0);
+        const noballs = deliveries.reduce((acc, d) => acc + (d.noball_runs ?? (d.extras_type === 'noball' ? d.extras_value : 0)), 0);
+        const byes = deliveries.reduce((acc, d) => acc + (d.bye_runs ?? (d.extras_type === 'bye' ? d.extras_value : 0)), 0);
+        const legbyes = deliveries.reduce((acc, d) => acc + (d.legbye_runs ?? (d.extras_type === 'legbye' ? d.extras_value : 0)), 0);
+        const penalties = deliveries.reduce((acc, d) => acc + (d.penalty_runs ?? (d.extras_type === 'penalty' ? d.extras_value : 0)), 0);
+        const extrasTotal = wides + noballs + byes + legbyes + penalties;
 
         return {
           innings: inn,
@@ -189,6 +190,7 @@ export default function ScorecardScreen() {
             noballs,
             byes,
             legbyes,
+            penalty: penalties,
           },
         };
       });

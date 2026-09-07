@@ -12,7 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import CelebrationOverlay from '../components/CelebrationOverlay';
 import { CricketColors as C } from '../constants/theme';
 import {
-  Delivery, Player,
+  Delivery, DeliveryBreakdown, Player,
   addDelivery,
   createInnings,
   deleteInnings,
@@ -144,6 +144,15 @@ export default function ScoringScreen() {
   // ── Wide Modal State ──────────────────────────────────────────────────────
   const [wideModalVisible, setWideModalVisible] = useState(false);
   const [wideRuns, setWideRuns]                 = useState(1);
+
+  // ── No-Ball Modal State ───────────────────────────────────────────────────
+  const [noBallModalVisible, setNoBallModalVisible] = useState(false);
+  const [noBallSubtype, setNoBallSubtype]           = useState<'bat' | 'bye' | 'legbye'>('bat');
+  const [noBallRuns, setNoBallRuns]                 = useState(0);
+
+  // ── Penalty Modal State ───────────────────────────────────────────────────
+  const [penaltyModalVisible, setPenaltyModalVisible] = useState(false);
+  const [penaltyRuns, setPenaltyRuns]                 = useState(5);
 
   // ── Init ─────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -394,7 +403,8 @@ export default function ScoringScreen() {
   const handleRun = (
     runs: number,
     extrasType: string | null = null,
-    extrasValue: number = 0
+    extrasValue: number = 0,
+    breakdown?: DeliveryBreakdown
   ) => {
     if (!striker || !nonStriker || !currentBowler) {
       Alert.alert('Select Players', 'Please select batsmen and bowler first.');
@@ -414,7 +424,8 @@ export default function ScoringScreen() {
       extrasType, extrasValue,
       isLegal,
       false, null, null, // no wicket
-      isFreeHit   // was this ball a free hit?
+      isFreeHit,  // was this ball a free hit?
+      breakdown
     );
 
     // Trigger celebration animations for boundaries
@@ -428,7 +439,7 @@ export default function ScoringScreen() {
     //  – No-ball bowled → next delivery is free hit
     //  – Legal delivery → free hit ends
     //  – Wide           → free hit persists (wide is NOT legal)
-    if (extrasType === 'noball') {
+    if (extrasType === 'noball' || (breakdown?.noballRuns ?? 0) > 0) {
       setIsFreeHit(true);
     } else if (isLegal) {
       setIsFreeHit(false);
@@ -457,7 +468,8 @@ export default function ScoringScreen() {
       // ── Mid-over: rotate on odd runs ──
       // For byes/legbyes: rotation based on runs (striker/non-striker swap if odd)
       const rotateRuns = (extrasType === 'bye' || extrasType === 'legbye')
-        ? (runs > 0 ? runs : extrasValue) : runs;
+        ? (breakdown?.byeRuns || breakdown?.legbyeRuns || extrasValue)
+        : runs;
       if (rotateRuns % 2 !== 0) {
         rotateStrike();
       }
@@ -467,8 +479,13 @@ export default function ScoringScreen() {
       if (runsRun > 0 && runsRun % 2 !== 0) {
         rotateStrike();
       }
+    } else if (extrasType === 'noball') {
+      // No Ball is illegal, but if batsmen ran odd runs (off bat or byes/legbyes)
+      const runsRan = runs > 0 ? runs : (breakdown?.byeRuns || breakdown?.legbyeRuns || 0);
+      if (runsRan > 0 && runsRan % 2 !== 0) {
+        rotateStrike();
+      }
     }
-    // No Ball without byes → no strike rotation
   };
 
   // ── Wide handlers ────────────────────────────────────────────────────────
@@ -499,7 +516,67 @@ export default function ScoringScreen() {
 
   const confirmByes = () => {
     setByesModalVisible(false);
-    handleRun(byesRuns, byesType, 0);
+    handleRun(0, byesType, byesRuns, {
+      byeRuns: byesType === 'bye' ? byesRuns : 0,
+      legbyeRuns: byesType === 'legbye' ? byesRuns : 0,
+    });
+  };
+
+  // ── No-Ball handlers ─────────────────────────────────────────────────────
+  const openNoBallModal = () => {
+    if (!striker || !nonStriker || !currentBowler) {
+      Alert.alert('Select Players', 'Please select batsmen and bowler first.');
+      return;
+    }
+    setNoBallSubtype('bat');
+    setNoBallRuns(0);
+    setNoBallModalVisible(true);
+  };
+
+  const confirmNoBall = () => {
+    setNoBallModalVisible(false);
+    if (noBallSubtype === 'bat') {
+      handleRun(noBallRuns, 'noball', 1, {
+        noballRuns: 1,
+      });
+    } else if (noBallSubtype === 'bye') {
+      handleRun(0, 'noball', 1 + noBallRuns, {
+        noballRuns: 1,
+        byeRuns: noBallRuns,
+      });
+    } else if (noBallSubtype === 'legbye') {
+      handleRun(0, 'noball', 1 + noBallRuns, {
+        noballRuns: 1,
+        legbyeRuns: noBallRuns,
+      });
+    }
+  };
+
+  // ── Penalty handlers ─────────────────────────────────────────────────────
+  const openPenaltyModal = () => {
+    if (!striker || !nonStriker || !currentBowler) {
+      Alert.alert('Select Players', 'Please select batsmen and bowler first.');
+      return;
+    }
+    setPenaltyRuns(5);
+    setPenaltyModalVisible(true);
+  };
+
+  const confirmPenalty = () => {
+    setPenaltyModalVisible(false);
+    const currentOverNo = Math.floor(legalBalls / ballsPerOver);
+    const currentBallNo = legalBalls % ballsPerOver;
+
+    addDelivery(
+      Number(inningsId),
+      currentOverNo, currentBallNo,
+      striker!.id, nonStriker!.id, currentBowler!.id,
+      0, 'penalty', penaltyRuns,
+      false, false, null, null, false,
+      { penaltyRuns }
+    );
+    refreshScore();
+    checkTargetChased();
   };
 
   // ── handleWicket ─────────────────────────────────────────────────────────
@@ -640,26 +717,42 @@ export default function ScoringScreen() {
   // ── Ball display helpers ─────────────────────────────────────────────────
 
   const getBallLabel = (d: Delivery): string => {
-    if (d.is_wicket)                return 'W';
-    if (d.extras_type === 'wide')   return d.extras_value > 1 ? `${d.extras_value}Wd` : 'Wd';
-    if (d.extras_type === 'noball') return 'Nb';
-    if (d.extras_type === 'bye') {
-      const r = d.batsman_runs > 0 ? d.batsman_runs : d.extras_value;
-      return r > 1 ? `${r}B` : 'B';
+    if (d.is_wicket) return 'W';
+    if (d.extras_type === 'penalty' || (d.penalty_runs ?? 0) > 0) {
+      return `+${d.penalty_runs || d.extras_value}P`;
     }
-    if (d.extras_type === 'legbye') {
-      const r = d.batsman_runs > 0 ? d.batsman_runs : d.extras_value;
-      return r > 1 ? `${r}Lb` : 'Lb';
+    if (d.extras_type === 'noball' || (d.noball_runs ?? 0) > 0) {
+      if (d.batsman_runs > 0) return `Nb+${d.batsman_runs}`;
+      if (d.bye_runs > 0) return `Nb+${d.bye_runs}B`;
+      if (d.legbye_runs > 0) return `Nb+${d.legbye_runs}Lb`;
+      return 'Nb';
     }
-    if (d.batsman_runs === 4)       return '4';
-    if (d.batsman_runs === 6)       return '6';
+    if (d.extras_type === 'wide' || (d.wide_runs ?? 0) > 0) {
+      const w = d.wide_runs || d.extras_value;
+      return w > 1 ? `${w}Wd` : 'Wd';
+    }
+    if (d.extras_type === 'bye' || (d.bye_runs ?? 0) > 0) {
+      const r = d.bye_runs || d.extras_value || d.batsman_runs;
+      return r > 1 ? `${r}B` : '1B';
+    }
+    if (d.extras_type === 'legbye' || (d.legbye_runs ?? 0) > 0) {
+      const r = d.legbye_runs || d.extras_value || d.batsman_runs;
+      return r > 1 ? `${r}Lb` : '1Lb';
+    }
+    if (d.batsman_runs === 4) return '4';
+    if (d.batsman_runs === 6) return '6';
     return d.batsman_runs.toString();
   };
 
   const getBallBadge = (d: Delivery): { bg: string; text: string; border: string } => {
     if (d.is_wicket) return { bg: '#FEE2E2', text: '#DC2626', border: '#FCA5A5' };
-    if (d.extras_type === 'wide' || d.extras_type === 'noball') return { bg: '#FEF3C7', text: '#D97706', border: '#FDE68A' };
-    if (d.extras_type === 'bye' || d.extras_type === 'legbye') return { bg: '#FEF3C7', text: '#B45309', border: '#FDE68A' };
+    if (d.extras_type === 'penalty' || (d.penalty_runs ?? 0) > 0) return { bg: '#E0E7FF', text: '#4338CA', border: '#C7D2FE' };
+    if (d.extras_type === 'wide' || d.extras_type === 'noball' || (d.noball_runs ?? 0) > 0 || (d.wide_runs ?? 0) > 0) {
+      return { bg: '#FEF3C7', text: '#D97706', border: '#FDE68A' };
+    }
+    if (d.extras_type === 'bye' || d.extras_type === 'legbye' || (d.bye_runs ?? 0) > 0 || (d.legbye_runs ?? 0) > 0) {
+      return { bg: '#FEF3C7', text: '#B45309', border: '#FDE68A' };
+    }
     if (d.batsman_runs === 6) return { bg: '#F3E8FF', text: '#7C3AED', border: '#DDD6FE' };
     if (d.batsman_runs === 4) return { bg: '#DCFCE7', text: '#15803D', border: '#86EFAC' };
     if (d.batsman_runs > 0)   return { bg: '#F1F5F2', text: '#0F172A', border: '#E2EBE3' };
@@ -971,7 +1064,7 @@ export default function ScoringScreen() {
 
           <TouchableOpacity
             style={styles.extraBtn}
-            onPress={() => handleRun(0, 'noball', 1)}
+            onPress={openNoBallModal}
             activeOpacity={0.75}
           >
             <Text style={styles.extraBtnText}>No Ball</Text>
@@ -991,6 +1084,14 @@ export default function ScoringScreen() {
             activeOpacity={0.75}
           >
             <Text style={styles.extraBtnText}>Leg Bye</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.extraBtn, { backgroundColor: '#F1F5F9' }]}
+            onPress={openPenaltyModal}
+            activeOpacity={0.75}
+          >
+            <Text style={[styles.extraBtnText, { color: '#475569' }]}>Penalty</Text>
           </TouchableOpacity>
         </View>
 
@@ -1300,8 +1401,8 @@ export default function ScoringScreen() {
               />
               <Text style={styles.byesNoteText}>
                 {byesRuns % 2 !== 0
-                  ? `Odd runs (${byesRuns}) — Added to batsman & strike will rotate ⇄`
-                  : `Even runs (${byesRuns}) — Added to batsman & strike stays`}
+                  ? `Odd runs (${byesRuns}) — Extras to team (0 to batter) & strike will rotate ⇄`
+                  : `Even runs (${byesRuns}) — Extras to team (0 to batter) & strike stays`}
               </Text>
             </View>
 
@@ -1435,6 +1536,179 @@ export default function ScoringScreen() {
               >
                 <Text style={styles.byesConfirmText}>
                   Confirm {wideRuns} {wideRuns === 1 ? 'Run' : 'Runs'} →
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ─────── NO-BALL MODAL ─────── */}
+      <Modal visible={noBallModalVisible} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalBox}>
+            <View style={styles.byesHeaderRow}>
+              <Text style={styles.modalTitle}>🚫 No-Ball Delivery</Text>
+              <Text style={styles.modalSubtitle}>
+                +1 Run to Team & Bowler • Next ball is a Free Hit
+              </Text>
+            </View>
+
+            {/* Subtype Selector Tabs */}
+            <View style={styles.nbTabRow}>
+              {[
+                { key: 'bat', label: '🏏 Off Bat' },
+                { key: 'bye', label: '🏃 Byes' },
+                { key: 'legbye', label: '🦵 Leg Byes' },
+              ].map(tab => (
+                <TouchableOpacity
+                  key={tab.key}
+                  style={[styles.nbTabBtn, noBallSubtype === tab.key && styles.nbTabBtnActive]}
+                  onPress={() => {
+                    setNoBallSubtype(tab.key as any);
+                    setNoBallRuns(tab.key === 'bat' ? 0 : 1);
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[styles.nbTabText, noBallSubtype === tab.key && styles.nbTabTextActive]}>
+                    {tab.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {/* Counter Controls */}
+            <View style={styles.byesCounterRow}>
+              <TouchableOpacity
+                style={[styles.byesCounterBtn, noBallRuns <= (noBallSubtype === 'bat' ? 0 : 1) && styles.byesCounterBtnDisabled]}
+                onPress={() => setNoBallRuns(prev => Math.max(noBallSubtype === 'bat' ? 0 : 1, prev - 1))}
+                disabled={noBallRuns <= (noBallSubtype === 'bat' ? 0 : 1)}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="remove" size={24} color={noBallRuns <= (noBallSubtype === 'bat' ? 0 : 1) ? C.textMuted : C.text} />
+              </TouchableOpacity>
+
+              <View style={styles.byesDisplayBox}>
+                <Text style={styles.byesCountText}>{noBallRuns}</Text>
+                <Text style={styles.byesCountUnit}>
+                  {noBallSubtype === 'bat' ? 'BAT RUNS' : (noBallSubtype === 'bye' ? 'BYE RUNS' : 'LEG BYE RUNS')}
+                </Text>
+              </View>
+
+              <TouchableOpacity
+                style={styles.byesCounterBtn}
+                onPress={() => setNoBallRuns(prev => prev + 1)}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="add" size={24} color={C.greenDark} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Quick Presets */}
+            <View style={styles.byesPresetsRow}>
+              {(noBallSubtype === 'bat' ? [0, 1, 2, 3, 4, 6] : [1, 2, 3, 4]).map(val => (
+                <TouchableOpacity
+                  key={val}
+                  style={[styles.byesPresetBtn, noBallRuns === val && styles.byesPresetBtnActive]}
+                  onPress={() => setNoBallRuns(val)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[styles.byesPresetText, noBallRuns === val && styles.byesPresetTextActive]}>
+                    {val === 0 ? 'Just NB' : val}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {/* Rule summary explanation */}
+            <View style={styles.byesNoteBox}>
+              <Ionicons
+                name="information-circle-outline"
+                size={16}
+                color={C.greenDark}
+              />
+              <Text style={styles.byesNoteText}>
+                {noBallSubtype === 'bat'
+                  ? `Total: +${1 + noBallRuns} (Batter: +${noBallRuns}, Bowler: +${1 + noBallRuns})${noBallRuns % 2 !== 0 ? ' • Strike rotates ⇄' : ''}`
+                  : `Total: +${1 + noBallRuns} (Batter: 0, Bowler: +1, Byes: +${noBallRuns})${noBallRuns % 2 !== 0 ? ' • Strike rotates ⇄' : ''}`}
+              </Text>
+            </View>
+
+            {/* Action Buttons */}
+            <View style={styles.byesActionsRow}>
+              <TouchableOpacity
+                style={styles.byesCancelBtn}
+                onPress={() => setNoBallModalVisible(false)}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.byesCancelText}>Cancel</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.byesConfirmBtn}
+                onPress={confirmNoBall}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.byesConfirmText}>
+                  Confirm +{1 + noBallRuns} Total →
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ─────── PENALTY RUNS MODAL ─────── */}
+      <Modal visible={penaltyModalVisible} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalBox}>
+            <View style={styles.byesHeaderRow}>
+              <Text style={styles.modalTitle}>⚖️ Penalty Runs</Text>
+              <Text style={styles.modalSubtitle}>
+                Awarded to batting team • Bowler & Batsman stats unchanged
+              </Text>
+            </View>
+
+            {/* Quick Presets */}
+            <View style={[styles.byesPresetsRow, { marginVertical: 14 }]}>
+              {[5, 1, 2, 3, 4, 10].map(val => (
+                <TouchableOpacity
+                  key={val}
+                  style={[styles.byesPresetBtn, penaltyRuns === val && styles.byesPresetBtnActive]}
+                  onPress={() => setPenaltyRuns(val)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[styles.byesPresetText, penaltyRuns === val && styles.byesPresetTextActive]}>
+                    +{val}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <View style={styles.byesNoteBox}>
+              <Ionicons name="shield-checkmark-outline" size={16} color={C.greenDark} />
+              <Text style={styles.byesNoteText}>
+                Team score gets +{penaltyRuns}. Does not advance over or legal balls.
+              </Text>
+            </View>
+
+            {/* Action Buttons */}
+            <View style={styles.byesActionsRow}>
+              <TouchableOpacity
+                style={styles.byesCancelBtn}
+                onPress={() => setPenaltyModalVisible(false)}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.byesCancelText}>Cancel</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.byesConfirmBtn}
+                onPress={confirmPenalty}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.byesConfirmText}>
+                  Award +{penaltyRuns} Runs →
                 </Text>
               </TouchableOpacity>
             </View>
@@ -1858,7 +2132,39 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
 
-  // ── Byes Modal Styles ──────────────────────────────────────────────────
+  // ── No-Ball & Byes Modal Styles ─────────────────────────────────────────
+  nbTabRow: {
+    flexDirection: 'row',
+    backgroundColor: '#F1F5F9',
+    borderRadius: 12,
+    padding: 4,
+    marginBottom: 14,
+    gap: 6,
+  },
+  nbTabBtn: {
+    flex: 1,
+    paddingVertical: 9,
+    alignItems: 'center',
+    borderRadius: 9,
+  },
+  nbTabBtnActive: {
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.12,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  nbTabText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#64748B',
+  },
+  nbTabTextActive: {
+    color: C.greenDark,
+    fontWeight: '800',
+  },
+
   byesHeaderRow: {
     marginBottom: 8,
     alignItems: 'center',

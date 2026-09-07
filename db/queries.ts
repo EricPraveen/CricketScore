@@ -40,6 +40,11 @@ export interface Delivery {
   batsman_runs: number;
   extras_type: string | null;
   extras_value: number;
+  wide_runs: number;
+  noball_runs: number;
+  bye_runs: number;
+  legbye_runs: number;
+  penalty_runs: number;
   is_legal_delivery: number; // 0 or 1
   is_wicket: number;         // 0 or 1
   wicket_type: string | null;
@@ -171,6 +176,14 @@ export const deleteInnings = (inningsId: number): void => {
  *  - Bye:           batsman_runs = 0,    extras_value = 1, legal = true
  *  - Leg Bye:       batsman_runs = 0,    extras_value = 1, legal = true
  */
+export interface DeliveryBreakdown {
+  wideRuns?: number;
+  noballRuns?: number;
+  byeRuns?: number;
+  legbyeRuns?: number;
+  penaltyRuns?: number;
+}
+
 export const addDelivery = (
   inningsId: number,
   overNo: number,
@@ -185,20 +198,29 @@ export const addDelivery = (
   isWicket: boolean,
   wicketType: string | null,
   dismissedPlayerId: number | null,
-  isFreeHit: boolean
+  isFreeHit: boolean,
+  breakdown?: DeliveryBreakdown
 ): number => {
+  const wideRuns = breakdown?.wideRuns ?? (extrasType === 'wide' ? extrasValue : 0);
+  const noballRuns = breakdown?.noballRuns ?? (extrasType === 'noball' ? (extrasValue > 0 ? extrasValue : 1) : 0);
+  const byeRuns = breakdown?.byeRuns ?? (extrasType === 'bye' ? extrasValue : 0);
+  const legbyeRuns = breakdown?.legbyeRuns ?? (extrasType === 'legbye' ? extrasValue : 0);
+  const penaltyRuns = breakdown?.penaltyRuns ?? (extrasType === 'penalty' ? extrasValue : 0);
+
   const result = db.runSync(
     `INSERT INTO deliveries (
        innings_id, over_no, ball_no,
        batsman_id, non_striker_id, bowler_id,
        batsman_runs, extras_type, extras_value,
+       wide_runs, noball_runs, bye_runs, legbye_runs, penalty_runs,
        is_legal_delivery, is_wicket, wicket_type,
        dismissed_player_id, is_free_hit
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       inningsId, overNo, ballNo,
       batsmanId, nonStrikerId, bowlerId,
       batsmanRuns, extrasType ?? null, extrasValue,
+      wideRuns, noballRuns, byeRuns, legbyeRuns, penaltyRuns,
       isLegalDelivery ? 1 : 0,
       isWicket       ? 1 : 0,
       wicketType ?? null,
@@ -233,10 +255,10 @@ export const undoLastDelivery = (inningsId: number): void => {
 
 // ─── SCORE CALCULATIONS (always derived from deliveries table) ────────────────
 
-/** Team total = sum of all batsman runs + all extras */
+/** Team total = sum of all batsman runs + all extras categories */
 export const getTotalRuns = (inningsId: number): number => {
   const result = db.getFirstSync(
-    `SELECT COALESCE(SUM(batsman_runs + extras_value), 0) AS total
+    `SELECT COALESCE(SUM(batsman_runs + wide_runs + noball_runs + bye_runs + legbye_runs + penalty_runs), 0) AS total
      FROM deliveries WHERE innings_id = ?`,
     [inningsId]
   ) as { total: number } | null;
@@ -272,7 +294,7 @@ export const getOversDisplay = (inningsId: number, ballsPerOver: number = 6): st
 /**
  * Batsman stats:
  *  - runs        = SUM(batsman_runs)  — all deliveries they faced as striker
- *  - balls_faced = legal deliveries only (is_legal_delivery = 1)
+ *  - balls_faced = legal deliveries and no-balls (excludes wides and penalties)
  *  - fours/sixes = any delivery where batsman_runs = 4/6 (includes no-balls)
  */
 export const getBatsmanStats = (
@@ -282,7 +304,7 @@ export const getBatsmanStats = (
   const result = db.getFirstSync(
     `SELECT
        COALESCE(SUM(batsman_runs), 0) AS runs,
-       COUNT(CASE WHEN is_legal_delivery = 1 THEN 1 END) AS balls_faced,
+       COUNT(CASE WHEN wide_runs = 0 AND (extras_type IS NULL OR extras_type != 'wide') AND (extras_type != 'penalty' OR extras_type IS NULL) THEN 1 END) AS balls_faced,
        COUNT(CASE WHEN batsman_runs = 4 THEN 1 END) AS fours,
        COUNT(CASE WHEN batsman_runs = 6 THEN 1 END) AS sixes
      FROM deliveries
@@ -295,7 +317,7 @@ export const getBatsmanStats = (
 /**
  * Bowler stats:
  *  - balls_bowled = legal deliveries they bowled
- *  - runs_given   = SUM(batsman_runs + extras_value) excluding byes & legbyes
+ *  - runs_given   = SUM(batsman_runs + wide_runs + noball_runs) — byes, legbyes, and penalties are EXCLUDED
  *  - wickets      = wickets credited to bowler (EXCLUDES Run Out)
  */
 export const getBowlerStats = (
@@ -305,11 +327,7 @@ export const getBowlerStats = (
   const result = db.getFirstSync(
     `SELECT
        COUNT(CASE WHEN is_legal_delivery = 1 THEN 1 END) AS balls_bowled,
-       COALESCE(SUM(
-         CASE WHEN extras_type IS NULL OR extras_type NOT IN ('bye', 'legbye')
-              THEN batsman_runs + extras_value
-              ELSE 0 END
-       ), 0) AS runs_given,
+       COALESCE(SUM(batsman_runs + wide_runs + noball_runs), 0) AS runs_given,
        COUNT(CASE WHEN is_wicket = 1
                    AND (wicket_type IS NULL OR wicket_type != 'Run Out')
                   THEN 1 END) AS wickets

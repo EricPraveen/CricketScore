@@ -3,7 +3,7 @@ import * as SQLite from 'expo-sqlite';
 const db = SQLite.openDatabaseSync('cricket.db');
 
 // Increment this whenever the schema changes — old DB will be wiped & recreated
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 
 export const initDB = (): void => {
   // ── Schema-version guard ─────────────────────────────────────────────────
@@ -73,9 +73,14 @@ export const initDB = (): void => {
       non_striker_id      INTEGER NOT NULL,
       bowler_id           INTEGER NOT NULL,
       batsman_runs        INTEGER DEFAULT 0,
-      extras_type         TEXT,              -- 'wide' | 'noball' | 'bye' | 'legbye' | NULL
+      extras_type         TEXT,              -- 'wide' | 'noball' | 'bye' | 'legbye' | 'penalty' | NULL
       extras_value        INTEGER DEFAULT 0,
-      is_legal_delivery   INTEGER DEFAULT 1, -- 0 for wide/noball
+      wide_runs           INTEGER DEFAULT 0,
+      noball_runs         INTEGER DEFAULT 0,
+      bye_runs            INTEGER DEFAULT 0,
+      legbye_runs         INTEGER DEFAULT 0,
+      penalty_runs        INTEGER DEFAULT 0,
+      is_legal_delivery   INTEGER DEFAULT 1, -- 0 for wide/noball/penalty
       is_wicket           INTEGER DEFAULT 0,
       wicket_type         TEXT,
       dismissed_player_id INTEGER,

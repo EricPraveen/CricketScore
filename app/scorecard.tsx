@@ -21,6 +21,13 @@ import {
 } from '../db/queries';
 import { CricketColors as C } from '../constants/theme';
 import { InningsPdfData, shareScorecardAsPdf } from '../utils/scorecardPdf';
+import { calculateFallOfWickets, calculatePartnerships } from '../utils/cricketStats';
+
+const getOrdinalSuffix = (n: number) => {
+  const s = ['th', 'st', 'nd', 'rd'];
+  const v = n % 100;
+  return s[(v - 20) % 10] || s[v] || s[0];
+};
 
 export default function ScorecardScreen() {
   const router   = useRouter();
@@ -174,6 +181,9 @@ export default function ScorecardScreen() {
         const penalties = deliveries.reduce((acc, d) => acc + (d.penalty_runs ?? (d.extras_type === 'penalty' ? d.extras_value : 0)), 0);
         const extrasTotal = wides + noballs + byes + legbyes + penalties;
 
+        const fow = calculateFallOfWickets(deliveries, allPlayersInMatch, ballsPerOver);
+        const partnerships = calculatePartnerships(deliveries, allPlayersInMatch);
+
         return {
           innings: inn,
           battingTeam: inn.batting_team,
@@ -192,6 +202,8 @@ export default function ScorecardScreen() {
             legbyes,
             penalty: penalties,
           },
+          fow,
+          partnerships,
         };
       });
 
@@ -261,11 +273,19 @@ export default function ScorecardScreen() {
 
         {/* Innings */}
         {innings.map((inn, i) => {
+          const allPlayersInMatch = [
+            ...getPlayersByTeam(Number(matchId), match?.team1 || ''),
+            ...getPlayersByTeam(Number(matchId), match?.team2 || ''),
+          ];
           const bp  = getPlayersByTeam(Number(matchId), inn.batting_team);
           const blp = getPlayersByTeam(Number(matchId), inn.bowling_team);
           const runs = getTotalRuns(inn.id);
           const wkts = getWickets(inn.id);
           const ovs  = getOversDisplay(inn.id, ballsPerOver);
+          const deliveries = getDeliveriesByInnings(inn.id);
+          const fow = calculateFallOfWickets(deliveries, allPlayersInMatch, ballsPerOver);
+          const partnerships = calculatePartnerships(deliveries, allPlayersInMatch);
+          const maxStandRuns = partnerships.length > 0 ? Math.max(...partnerships.map((p) => p.totalRuns)) : 0;
 
           return (
             <View key={inn.id} style={styles.inningsSection}>
@@ -340,6 +360,78 @@ export default function ScorecardScreen() {
                   </View>
                 );
               })}
+
+              {/* Fall of Wickets */}
+              {fow.length > 0 && (
+                <View style={{ marginTop: 18 }}>
+                  <Text style={styles.tableTitle}>FALL OF WICKETS</Text>
+                  <View style={styles.fowContainer}>
+                    {fow.map((item, idx) => (
+                      <View key={idx} style={styles.fowChip}>
+                        <Text style={styles.fowWktText}>
+                          {item.wicketNum}-{item.score}
+                        </Text>
+                        <Text style={styles.fowDetailText} numberOfLines={1}>
+                          {item.batsmanName} ({item.overs} ov)
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              )}
+
+              {/* Partnerships */}
+              {partnerships.length > 0 && (
+                <View style={{ marginTop: 18 }}>
+                  <Text style={styles.tableTitle}>PARTNERSHIPS</Text>
+                  <View style={styles.partnershipsList}>
+                    {partnerships.map((p, idx) => {
+                      const isHighest = p.totalRuns === maxStandRuns && p.totalRuns > 0;
+                      return (
+                        <View key={idx} style={[styles.standCard, isHighest && styles.standCardHighest]}>
+                          <View style={styles.standTopRow}>
+                            <View style={styles.standTitleBox}>
+                              <Text style={styles.standTitleText}>
+                                {p.isUnbroken
+                                  ? `${p.wicketNum}* Wicket (Unbroken)`
+                                  : `${p.wicketNum}${getOrdinalSuffix(p.wicketNum)} Wicket`}
+                              </Text>
+                              {isHighest && (
+                                <View style={styles.bestBadge}>
+                                  <Text style={styles.bestBadgeText}>BEST</Text>
+                                </View>
+                              )}
+                            </View>
+                            <Text style={styles.standScoreText}>
+                              {p.totalRuns} <Text style={styles.standBallsText}>({p.totalBalls}b)</Text>
+                            </Text>
+                          </View>
+
+                          <View style={styles.standBattersRow}>
+                            <View style={styles.batterStandCol}>
+                              <Text style={styles.batterStandName} numberOfLines={1}>
+                                {p.batsman1.name}
+                              </Text>
+                              <Text style={styles.batterStandStat}>
+                                <Text style={styles.batterStandRuns}>{p.batsman1.runs}</Text> ({p.batsman1.balls}b)
+                              </Text>
+                            </View>
+                            <Text style={styles.standVsText}>&</Text>
+                            <View style={[styles.batterStandCol, { alignItems: 'flex-end' }]}>
+                              <Text style={styles.batterStandName} numberOfLines={1}>
+                                {p.batsman2.name}
+                              </Text>
+                              <Text style={styles.batterStandStat}>
+                                <Text style={styles.batterStandRuns}>{p.batsman2.runs}</Text> ({p.batsman2.balls}b)
+                              </Text>
+                            </View>
+                          </View>
+                        </View>
+                      );
+                    })}
+                  </View>
+                </View>
+              )}
             </View>
           );
         })}
@@ -466,6 +558,120 @@ const styles = StyleSheet.create({
   tdCell:    { flex: 1, color: C.text, fontSize: 13, textAlign: 'center' },
   highlight: { color: C.greenDark, fontWeight: '800' },
   highlightWickets: { color: C.red, fontWeight: '900' },
+
+  // Fall of Wickets
+  fowContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 2,
+  },
+  fowChip: {
+    backgroundColor: '#F8FAF8',
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+  },
+  fowWktText: {
+    color: C.greenDark,
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  fowDetailText: {
+    color: C.textSub,
+    fontSize: 11,
+    marginTop: 1,
+  },
+
+  // Partnerships
+  partnershipsList: {
+    gap: 8,
+    marginTop: 2,
+  },
+  standCard: {
+    backgroundColor: '#F8FAF8',
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: 10,
+    padding: 10,
+  },
+  standCardHighest: {
+    borderColor: '#FDE68A',
+    backgroundColor: '#FEFCE8',
+  },
+  standTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+    paddingBottom: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: '#EDF2EE',
+  },
+  standTitleBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  standTitleText: {
+    color: C.textSub,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  bestBadge: {
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+  },
+  bestBadgeText: {
+    color: '#B45309',
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  standScoreText: {
+    color: C.text,
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  standBallsText: {
+    color: C.textSub,
+    fontSize: 11,
+    fontWeight: '500',
+  },
+  standBattersRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  batterStandCol: {
+    flex: 1,
+  },
+  batterStandName: {
+    color: C.text,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  batterStandStat: {
+    color: C.textSub,
+    fontSize: 11,
+    marginTop: 1,
+  },
+  batterStandRuns: {
+    color: C.greenDark,
+    fontWeight: '700',
+  },
+  standVsText: {
+    color: C.textMuted,
+    fontSize: 12,
+    fontWeight: '700',
+    paddingHorizontal: 8,
+  },
 
   resumeBtn: {
     backgroundColor: '#FEF3C7',

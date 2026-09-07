@@ -16,6 +16,7 @@ export default function RootLayout() {
         <Stack.Screen name="toss" />
         <Stack.Screen name="scoring" />
         <Stack.Screen name="scorecard" />
+        <Stack.Screen name="history" />
       </Stack>
     </SafeAreaProvider>
   );

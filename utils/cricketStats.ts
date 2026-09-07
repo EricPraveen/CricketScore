@@ -1,4 +1,13 @@
-import { Delivery, Player } from '../db/queries';
+import {
+  Delivery,
+  getInningsByMatch,
+  getOversDisplay,
+  getPlayersByTeam,
+  getTotalRuns,
+  getWickets,
+  Match,
+  Player,
+} from '../db/queries';
 
 export interface FallOfWicket {
   wicketNum: number;
@@ -284,5 +293,91 @@ export function calculateOverSummaries(
   }
 
   return summaries;
+}
+
+export interface InningsSummary {
+  id: number;
+  inningsNo: number;
+  battingTeam: string;
+  bowlingTeam: string;
+  runs: number;
+  wickets: number;
+  oversStr: string;
+}
+
+export interface MatchSummary {
+  match: Match;
+  innings: InningsSummary[];
+  resultText: string;
+  isCompleted: boolean;
+}
+
+/**
+ * Computes a high-level summary of a match including innings scores and outcome.
+ */
+export function getMatchSummary(match: Match): MatchSummary {
+  const ballsPerOver = match.balls_per_over ?? 6;
+  const inningsList = getInningsByMatch(match.id);
+
+  const innings: InningsSummary[] = inningsList.map((inn) => {
+    const runs = getTotalRuns(inn.id);
+    const wickets = getWickets(inn.id);
+    const oversStr = getOversDisplay(inn.id, ballsPerOver);
+    return {
+      id: inn.id,
+      inningsNo: inn.innings_no,
+      battingTeam: inn.batting_team,
+      bowlingTeam: inn.bowling_team,
+      runs,
+      wickets,
+      oversStr,
+    };
+  });
+
+  let resultText = '';
+  const isCompleted = match.status === 'completed';
+
+  if (innings.length === 0) {
+    resultText = 'Match not started';
+  } else if (innings.length === 1) {
+    if (isCompleted) {
+      resultText = `${innings[0].battingTeam} scored ${innings[0].runs}/${innings[0].wickets}`;
+    } else {
+      resultText = `Innings 1 in progress (${innings[0].runs}/${innings[0].wickets})`;
+    }
+  } else if (innings.length >= 2) {
+    const runs1 = innings[0].runs;
+    const runs2 = innings[1].runs;
+    const wkts2 = innings[1].wickets;
+    const pl2 = getPlayersByTeam(match.id, innings[1].battingTeam);
+
+    if (isCompleted) {
+      if (runs2 > runs1) {
+        const byWickets = pl2.length > 0 ? Math.max(pl2.length - 1 - wkts2, 1) : 10 - wkts2;
+        resultText = `${innings[1].battingTeam} won by ${byWickets} wkt${byWickets !== 1 ? 's' : ''}! 🏆`;
+      } else if (runs1 > runs2) {
+        const byRuns = runs1 - runs2;
+        resultText = `${innings[0].battingTeam} won by ${byRuns} run${byRuns !== 1 ? 's' : ''}! 🏆`;
+      } else {
+        resultText = 'Match Tied! 🤝';
+      }
+    } else {
+      // Live match
+      if (runs2 > runs1) {
+        const byWickets = pl2.length > 0 ? Math.max(pl2.length - 1 - wkts2, 1) : 10 - wkts2;
+        resultText = `${innings[1].battingTeam} won by ${byWickets} wkt${byWickets !== 1 ? 's' : ''}! 🏆`;
+      } else {
+        const needed = runs1 + 1 - runs2;
+        resultText = `${innings[1].battingTeam} needs ${needed} run${needed !== 1 ? 's' : ''} to win`;
+      }
+    }
+  }
+
+  return {
+    match,
+    innings,
+    resultText,
+    isCompleted,
+  };
 }
 

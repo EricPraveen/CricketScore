@@ -1,5 +1,6 @@
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
+import * as FileSystem from 'expo-file-system/legacy';
 import { Match, Innings, Player, BatsmanStats, BowlerStats } from '../db/queries';
 
 export interface InningsPdfData {
@@ -401,16 +402,33 @@ export function generateScorecardHtml(options: ScorecardPdfOptions): string {
 export async function shareScorecardAsPdf(options: ScorecardPdfOptions): Promise<void> {
   const html = generateScorecardHtml(options);
 
-  // Generate the PDF file
-  const { uri } = await Print.printToFileAsync({
+  // Generate the PDF file with base64 data
+  const { uri, base64 } = await Print.printToFileAsync({
     html,
-    base64: false,
+    base64: true,
   });
+
+  let shareUri = uri;
+
+  // On Android/iOS, printToFileAsync writes to a temporary print cache directory
+  // that ExpoSharing cannot read directly due to scoped storage / file permissions.
+  // Writing the base64 content to the app's scoped directory resolves this.
+  const targetDir = FileSystem.cacheDirectory || FileSystem.documentDirectory;
+  if (base64 && targetDir) {
+    const rawTitle = `${options.match?.team1 || 'Team1'}_vs_${options.match?.team2 || 'Team2'}_Scorecard`;
+    const sanitizedTitle = rawTitle.replace(/[^a-zA-Z0-9_-]/g, '_');
+    const targetUri = `${targetDir}${sanitizedTitle}.pdf`;
+
+    await FileSystem.writeAsStringAsync(targetUri, base64, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+    shareUri = targetUri;
+  }
 
   // Check sharing availability
   const isAvailable = await Sharing.isAvailableAsync();
   if (isAvailable) {
-    await Sharing.shareAsync(uri, {
+    await Sharing.shareAsync(shareUri, {
       mimeType: 'application/pdf',
       dialogTitle: `${options.match?.team1 || 'Team1'} vs ${options.match?.team2 || 'Team2'} Scorecard`,
       UTI: '.pdf',
